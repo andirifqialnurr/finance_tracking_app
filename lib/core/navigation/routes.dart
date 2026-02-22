@@ -8,6 +8,10 @@ import '../../screens/incomes/income_history_screen.dart';
 import '../../screens/incomes/add_income_screen.dart';
 import '../../screens/categories/category_management_screen.dart';
 import '../../screens/categories/add_edit_category_screen.dart';
+import '../../screens/analytics/analytics_screen.dart';
+import '../../screens/reports/reports_screen.dart';
+import '../../screens/alerts/alerts_screen.dart';
+import '../../screens/alerts/create_alert_screen.dart';
 import '../../models/expense_category.dart';
 
 /// Route names constants
@@ -22,6 +26,10 @@ class Routes {
   static const String categoryManagement = '/categories';
   static const String addCategory = '/categories/add';
   static const String editCategory = '/categories/edit';
+  static const String analytics = '/analytics';
+  static const String reports = '/reports';
+  static const String alerts = '/alerts';
+  static const String createAlert = '/alerts/create';
 }
 
 /// Generate routes for the app
@@ -63,6 +71,21 @@ class AppRoutes {
         final category = settings.arguments as ExpenseCategory?;
         return MaterialPageRoute(
           builder: (_) => AddEditCategoryScreen(category: category),
+        );
+
+      case Routes.analytics:
+        return MaterialPageRoute(builder: (_) => const AnalyticsScreen());
+
+      case Routes.reports:
+        return MaterialPageRoute(builder: (_) => const ReportsScreen());
+
+      case Routes.alerts:
+        return MaterialPageRoute(builder: (_) => const AlertsScreen());
+
+      case Routes.createAlert:
+        final existingAlert = settings.arguments as Map<String, dynamic>?;
+        return MaterialPageRoute(
+          builder: (_) => CreateAlertScreen(existingAlert: existingAlert),
         );
 
       default:

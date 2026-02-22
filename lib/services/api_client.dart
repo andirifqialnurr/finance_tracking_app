@@ -70,6 +70,27 @@ class ApiClient {
     }
   }
 
+  /// PATCH request
+  Future<dynamic> patch(
+    String endpoint, {
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final uri = _buildUri(endpoint);
+      final request = http.Request('PATCH', uri);
+      request.headers.addAll(_buildHeaders(headers));
+      if (body != null) {
+        request.body = jsonEncode(body);
+      }
+      final streamedResponse = await _httpClient.send(request);
+      final response = await http.Response.fromStream(streamedResponse);
+      return _handleResponse(response);
+    } catch (e) {
+      throw ApiException('PATCH request failed: ${e.toString()}');
+    }
+  }
+
   /// DELETE request
   Future<dynamic> delete(
     String endpoint, {

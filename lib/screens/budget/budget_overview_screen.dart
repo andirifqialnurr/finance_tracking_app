@@ -1,7 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/budget.dart';
+import '../../providers/budget_provider.dart';
+import '../../utils/formatters.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/budget/budget_category_item.dart';
 import '../../widgets/common/loading_indicator.dart';
@@ -15,167 +19,157 @@ class BudgetOverviewScreen extends StatefulWidget {
 }
 
 class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
-  // TODO: Replace with actual data from API
-  bool _isLoading = false;
   String _selectedFilter = 'All Categories';
 
-  // Sample budget data
-  final List<Map<String, dynamic>> _budgetData = [
-    {
-      'name': 'Makan',
-      'type': 'Daily Continuous',
-      'allocated': 1240000.0,
-      'spent': 480000.0,
-      'remaining': 760000.0,
-    },
-    {
-      'name': 'Bensin',
-      'type': 'Usage Based',
-      'allocated': 175000.0,
-      'spent': 140000.0,
-      'remaining': 35000.0,
-    },
-    {
-      'name': 'Netflix',
-      'type': 'Subscription',
-      'allocated': 120000.0,
-      'spent': 120000.0,
-      'remaining': 0.0,
-    },
-    {
-      'name': 'Spotify',
-      'type': 'Subscription',
-      'allocated': 60000.0,
-      'spent': 60000.0,
-      'remaining': 0.0,
-    },
-    {
-      'name': 'Internet',
-      'type': 'Subscription',
-      'allocated': 100000.0,
-      'spent': 100000.0,
-      'remaining': 0.0,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final now = DateTime.now();
+      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year);
+    });
+  }
 
-  final double _totalAllocated = 2099000;
-  final double _totalSpent = 1850000;
-  final double _totalRemaining = 249000;
-
-  // Get filtered budget data based on selected filter
-  List<Map<String, dynamic>> get _filteredBudgetData {
-    if (_selectedFilter == 'All Categories') {
-      return _budgetData;
-    }
-    return _budgetData
-        .where((budget) => budget['type'] == _selectedFilter)
+  List<BudgetWithCategory> _filteredBudgets(List<BudgetWithCategory> budgets) {
+    if (_selectedFilter == 'All Categories') return budgets;
+    return budgets
+        .where((b) => b.category.typeLabel == _selectedFilter)
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Budget Overview'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterOptions,
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        child: _isLoading
-            ? const LoadingIndicator(message: 'Loading budgets...')
-            : CustomScrollView(
-                slivers: [
-                  // Summary Header
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: AppDimensions.screenPadding,
-                      child: _buildSummaryHeader(),
-                    ),
-                  ),
+    return Consumer<BudgetProvider>(
+      builder: (context, provider, _) {
+        final filtered = _filteredBudgets(provider.budgets);
 
-                  // Month Selector
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: AppDimensions.screenPaddingHorizontal,
-                      child: _buildMonthSelector(),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing24),
-                  ),
-
-                  // Budget Categories List
-                  _filteredBudgetData.isEmpty
-                      ? SliverFillRemaining(
-                          child: EmptyState(
-                            icon: Icons.account_balance_wallet_outlined,
-                            title: 'No Budget Data',
-                            message: _selectedFilter == 'All Categories'
-                                ? 'Start by adding income to allocate budgets'
-                                : 'No budgets found for $_selectedFilter',
-                            actionLabel: _selectedFilter == 'All Categories'
-                                ? 'Add Income'
-                                : 'Clear Filter',
-                            onAction: () {
-                              if (_selectedFilter == 'All Categories') {
-                                // TODO: Navigate to add income
-                              } else {
-                                setState(
-                                  () => _selectedFilter = 'All Categories',
-                                );
-                              }
-                            },
-                          ),
-                        )
-                      : SliverPadding(
-                          padding: AppDimensions.screenPaddingHorizontal,
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              final budget = _filteredBudgetData[index];
-                              return BudgetCategoryItem(
-                                categoryName: budget['name'],
-                                categoryType: budget['type'],
-                                allocatedAmount: budget['allocated'],
-                                spentAmount: budget['spent'],
-                                remainingAmount: budget['remaining'],
-                                onTap: () {
-                                  _showBudgetDetails(budget);
-                                },
-                              );
-                            }, childCount: _filteredBudgetData.length),
-                          ),
-                        ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing24),
-                  ),
-                ],
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: const Text('Budget Overview'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.filter_list),
+                onPressed: () => _showFilterOptions(provider),
               ),
-      ),
+            ],
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Fixed header — does not scroll
+              Padding(
+                padding: AppDimensions.screenPadding,
+                child: _buildSummaryHeader(provider),
+              ),
+              Padding(
+                padding: AppDimensions.screenPaddingHorizontal,
+                child: _buildMonthSelector(provider),
+              ),
+              const SizedBox(height: AppDimensions.spacing24),
+
+              // Scrollable list
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => provider.refresh(),
+                  child: provider.isLoading && provider.budgets.isEmpty
+                      ? const LoadingIndicator(message: 'Loading budgets...')
+                      : CustomScrollView(
+                          slivers: [
+                            // Error state
+                            if (provider.error != null)
+                              SliverFillRemaining(
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        provider.error!,
+                                        style: AppTypography.bodyMedium
+                                            .copyWith(color: AppColors.error),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(
+                                        height: AppDimensions.spacing16,
+                                      ),
+                                      TextButton(
+                                        onPressed: provider.refresh,
+                                        child: const Text('Retry'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else if (filtered.isEmpty)
+                              SliverFillRemaining(
+                                child: EmptyState(
+                                  icon: Icons.account_balance_wallet_outlined,
+                                  title: 'No Budget Data',
+                                  message: _selectedFilter == 'All Categories'
+                                      ? 'Start by adding income to allocate budgets'
+                                      : 'No budgets found for $_selectedFilter',
+                                  actionLabel:
+                                      _selectedFilter != 'All Categories'
+                                      ? 'Clear Filter'
+                                      : null,
+                                  onAction: _selectedFilter != 'All Categories'
+                                      ? () => setState(
+                                          () => _selectedFilter =
+                                              'All Categories',
+                                        )
+                                      : null,
+                                ),
+                              )
+                            else
+                              SliverPadding(
+                                padding: AppDimensions.screenPaddingHorizontal,
+                                sliver: SliverList(
+                                  delegate: SliverChildBuilderDelegate((
+                                    context,
+                                    index,
+                                  ) {
+                                    final budget = filtered[index];
+                                    return BudgetCategoryItem(
+                                      categoryName: budget.category.name,
+                                      categoryType: budget.category.typeLabel,
+                                      allocatedAmount: budget.allocatedAmount,
+                                      spentAmount: budget.spentAmount,
+                                      remainingAmount: budget.remainingAmount,
+                                      onTap: () => _showBudgetDetails(budget),
+                                    );
+                                  }, childCount: filtered.length),
+                                ),
+                              ),
+
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: AppDimensions.spacing24),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildSummaryHeader() {
-    final percentageUsed = (_totalSpent / _totalAllocated) * 100;
+  Widget _buildSummaryHeader(BudgetProvider provider) {
+    final summary = provider.summary;
+    final totalAllocated = summary?.totalAllocated ?? 0.0;
+    final totalSpent = summary?.totalSpent ?? 0.0;
+    final totalRemaining = summary?.totalRemaining ?? 0.0;
+    final percentageUsed = totalAllocated > 0
+        ? (totalSpent / totalAllocated) * 100
+        : 0.0;
 
     return AppCard(
       child: Column(
         children: [
-          // Total Budget Progress
           Text('Total Budget Usage', style: AppTypography.titleMedium),
           const SizedBox(height: AppDimensions.spacing16),
 
-          // Circular Progress (could use a circular chart here)
           Stack(
             alignment: Alignment.center,
             children: [
@@ -183,7 +177,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 width: 120,
                 height: 120,
                 child: CircularProgressIndicator(
-                  value: percentageUsed / 100,
+                  value: (percentageUsed / 100).clamp(0.0, 1.0),
                   strokeWidth: 12,
                   backgroundColor: AppColors.borderLight,
                   valueColor: AlwaysStoppedAnimation<Color>(
@@ -204,25 +198,24 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           ),
           const SizedBox(height: AppDimensions.spacing24),
 
-          // Summary Numbers
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _SummaryItem(
                 label: 'Allocated',
-                amount: _totalAllocated,
+                amount: totalAllocated,
                 color: AppColors.info,
               ),
               Container(width: 1, height: 40, color: AppColors.border),
               _SummaryItem(
                 label: 'Spent',
-                amount: _totalSpent,
+                amount: totalSpent,
                 color: AppColors.error,
               ),
               Container(width: 1, height: 40, color: AppColors.border),
               _SummaryItem(
                 label: 'Remaining',
-                amount: _totalRemaining,
+                amount: totalRemaining,
                 color: AppColors.success,
               ),
             ],
@@ -232,7 +225,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     );
   }
 
-  Widget _buildMonthSelector() {
+  Widget _buildMonthSelector(BudgetProvider provider) {
     return AppCard(
       padding: AppDimensions.paddingMD,
       child: Row(
@@ -240,12 +233,18 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
-              // TODO: Go to previous month
+              int m = provider.month - 1;
+              int y = provider.year;
+              if (m < 1) {
+                m = 12;
+                y -= 1;
+              }
+              provider.changeMonth(m, y);
             },
           ),
           Expanded(
             child: Text(
-              'February 2026',
+              Formatters.formatMonthYear(provider.month, provider.year),
               style: AppTypography.titleMedium,
               textAlign: TextAlign.center,
             ),
@@ -253,7 +252,13 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_right),
             onPressed: () {
-              // TODO: Go to next month
+              int m = provider.month + 1;
+              int y = provider.year;
+              if (m > 12) {
+                m = 1;
+                y += 1;
+              }
+              provider.changeMonth(m, y);
             },
           ),
         ],
@@ -261,7 +266,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     );
   }
 
-  void _showFilterOptions() {
+  void _showFilterOptions(BudgetProvider provider) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -331,7 +336,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     Navigator.pop(context);
   }
 
-  void _showBudgetDetails(Map<String, dynamic> budget) {
+  void _showBudgetDetails(BudgetWithCategory budget) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -341,11 +346,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
         ),
       ),
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
+        initialChildSize: 0.65,
+        minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => Container(
+        builder: (context, scrollController) => SingleChildScrollView(
+          controller: scrollController,
           padding: AppDimensions.paddingLG,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,26 +367,78 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 ),
               ),
               const SizedBox(height: AppDimensions.spacing24),
-              Text(budget['name'], style: AppTypography.headlineSmall),
-              const SizedBox(height: AppDimensions.spacing8),
+              Text(budget.category.name, style: AppTypography.headlineSmall),
+              const SizedBox(height: AppDimensions.spacing4),
               Text(
-                budget['type'],
+                budget.category.typeLabel,
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: AppDimensions.spacing24),
-              // TODO: Add expense history for this category
-              Expanded(
-                child: Center(
-                  child: Text(
-                    'Expense history will be shown here',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textMuted,
-                    ),
+              _buildDetailRow(
+                'Allocated',
+                Formatters.formatCurrency(budget.allocatedAmount),
+                AppColors.info,
+              ),
+              const Divider(height: AppDimensions.spacing24),
+              _buildDetailRow(
+                'Spent',
+                Formatters.formatCurrency(budget.spentAmount),
+                AppColors.error,
+              ),
+              const Divider(height: AppDimensions.spacing24),
+              _buildDetailRow(
+                'Remaining',
+                Formatters.formatCurrency(budget.remainingAmount),
+                budget.isSafe ? AppColors.success : AppColors.warning,
+              ),
+              const Divider(height: AppDimensions.spacing24),
+              _buildDetailRow(
+                'Usage',
+                '${budget.percentageUsed.toStringAsFixed(1)}%',
+                AppColors.getBudgetColor(budget.percentageUsed),
+              ),
+              if (!budget.isSafe)
+                Container(
+                  margin: const EdgeInsets.only(top: AppDimensions.spacing16),
+                  padding: AppDimensions.paddingMD,
+                  decoration: BoxDecoration(
+                    color:
+                        (budget.isCritical
+                                ? AppColors.error
+                                : AppColors.warning)
+                            .withOpacity(0.1),
+                    borderRadius: AppDimensions.borderRadiusMD,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        budget.isCritical
+                            ? Icons.error_outline
+                            : Icons.warning_amber_outlined,
+                        color: budget.isCritical
+                            ? AppColors.error
+                            : AppColors.warning,
+                        size: 20,
+                      ),
+                      const SizedBox(width: AppDimensions.spacing8),
+                      Expanded(
+                        child: Text(
+                          budget.isCritical
+                              ? 'Over budget! Spending exceeds allocation.'
+                              : 'Warning: spending is above ${budget.alertThreshold}%.',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: budget.isCritical
+                                ? AppColors.error
+                                : AppColors.warning,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
+              const SizedBox(height: AppDimensions.spacing24),
             ],
           ),
         ),
@@ -388,11 +446,23 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     );
   }
 
+  Widget _buildDetailRow(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        Text(value, style: AppTypography.titleSmall.copyWith(color: color)),
+      ],
+    );
+  }
+
   Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    // TODO: Fetch budget data from API
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+    await context.read<BudgetProvider>().refresh();
   }
 }
 

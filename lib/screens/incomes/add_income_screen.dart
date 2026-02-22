@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/constants/app_constants.dart';
+import '../../providers/income_provider.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_card.dart';
 import '../../utils/validators.dart';
 import '../../utils/formatters.dart';
+import '../../utils/app_toast.dart';
 
 class AddIncomeScreen extends StatefulWidget {
   const AddIncomeScreen({super.key});
@@ -22,7 +25,6 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  bool _isSubmitting = false;
   DateTime _selectedDate = DateTime.now();
 
   @override
@@ -35,6 +37,8 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<IncomeProvider>();
+    final isSubmitting = provider.isSubmitting;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Add Income')),
@@ -100,7 +104,7 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
             AppButton(
               text: 'Add Income',
               isFullWidth: true,
-              isLoading: _isSubmitting,
+              isLoading: isSubmitting,
               onPressed: _submitForm,
               variant: AppButtonVariant.primary,
             ),
@@ -189,6 +193,33 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
     );
   }
 
+  void _submitForm() async {
+    if (_formKey.currentState!.validate()) {
+      final amount = double.tryParse(_amountController.text) ?? 0;
+      final description = _descriptionController.text.trim();
+
+      final success = await context.read<IncomeProvider>().createIncome(
+        source: _sourceController.text.trim(),
+        amount: amount,
+        date: _selectedDate,
+        description: description.isEmpty ? null : description,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        AppToast.showSuccess(context, AppConstants.successIncomeSaved);
+        Navigator.pop(context);
+      } else {
+        final error = context.read<IncomeProvider>().submitError;
+        AppToast.showError(
+          context,
+          error ?? 'Failed to save income. Please try again.',
+        );
+      }
+    }
+  }
+
   Widget _buildAllocationPreview() {
     final amount = double.tryParse(_amountController.text) ?? 0;
     if (amount <= 0) return const SizedBox();
@@ -266,39 +297,5 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
         ],
       ),
     );
-  }
-
-  void _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isSubmitting = true);
-
-      try {
-        // TODO: Submit to API
-        await Future.delayed(const Duration(seconds: 2));
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(AppConstants.successIncomeSaved),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isSubmitting = false);
-        }
-      }
-    }
   }
 }

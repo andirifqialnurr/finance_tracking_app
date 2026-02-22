@@ -89,16 +89,17 @@ class IncomeWithAllocations {
   IncomeWithAllocations({required this.income, required this.allocations});
 
   factory IncomeWithAllocations.fromJson(Map<String, dynamic> json) {
+    final allocationsJson = json['allocations'] as List? ?? [];
     return IncomeWithAllocations(
       income: Income.fromJson(json['income'] as Map<String, dynamic>),
-      allocations: (json['allocations'] as List)
+      allocations: allocationsJson
           .map((e) => AllocationBreakdown.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
 }
 
-/// Allocation breakdown
+/// Allocation breakdown per category
 class AllocationBreakdown {
   final String categoryId;
   final String categoryName;
@@ -112,9 +113,58 @@ class AllocationBreakdown {
 
   factory AllocationBreakdown.fromJson(Map<String, dynamic> json) {
     return AllocationBreakdown(
-      categoryId: json['category_id'] as String,
-      categoryName: json['category'] as String,
-      allocated: (json['allocated'] as num).toDouble(),
+      categoryId:
+          json['category_id'] as String? ?? json['category'] as String? ?? '',
+      categoryName:
+          json['category_name'] as String? ?? json['category'] as String? ?? '',
+      allocated:
+          (json['allocated_amount'] as num? ?? json['allocated'] as num? ?? 0)
+              .toDouble(),
+    );
+  }
+}
+
+/// Pagination metadata
+class PaginationMeta {
+  final int page;
+  final int limit;
+  final int total;
+  final int totalPages;
+
+  PaginationMeta({
+    required this.page,
+    required this.limit,
+    required this.total,
+    required this.totalPages,
+  });
+
+  factory PaginationMeta.fromJson(Map<String, dynamic> json) {
+    return PaginationMeta(
+      page: json['page'] as int,
+      limit: json['limit'] as int,
+      total: json['total'] as int,
+      totalPages: json['total_pages'] as int,
+    );
+  }
+}
+
+/// Paginated income response
+class IncomePaginatedResponse {
+  final List<Income> data;
+  final PaginationMeta? pagination;
+
+  IncomePaginatedResponse({required this.data, this.pagination});
+
+  factory IncomePaginatedResponse.fromJson(Map<String, dynamic> json) {
+    final rawData = json['data'];
+    final List<dynamic> dataList = rawData is List ? rawData : [];
+    return IncomePaginatedResponse(
+      data: dataList
+          .map((e) => Income.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      pagination: json['pagination'] != null
+          ? PaginationMeta.fromJson(json['pagination'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

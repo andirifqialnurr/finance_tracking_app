@@ -7,120 +7,104 @@ class BudgetService {
 
   BudgetService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  /// Get current month budget for all categories
-  Future<List<BudgetWithCategory>> getCurrentBudgets() async {
-    try {
-      final response = await _apiClient.get('/budgets/current');
-
-      final List<dynamic> data = response['data'] ?? [];
-      return data.map((json) => BudgetWithCategory.fromJson(json)).toList();
-    } catch (e) {
-      throw Exception('Failed to fetch budgets: ${e.toString()}');
-    }
-  }
-
-  /// Get budget for specific month and year
-  Future<List<BudgetWithCategory>> getBudgetsByMonth({
-    required String month,
+  /// Get budget status per category for a specific month & year
+  ///
+  /// GET /budgets?month=2&year=2026
+  Future<List<BudgetWithCategory>> getBudgets({
+    required int month,
     required int year,
   }) async {
     try {
       final response = await _apiClient.get(
         '/budgets',
-        queryParams: {'month': month, 'year': year.toString()},
+        queryParams: {'month': month.toString(), 'year': year.toString()},
       );
 
       final List<dynamic> data = response['data'] ?? [];
-      return data.map((json) => BudgetWithCategory.fromJson(json)).toList();
+      return data
+          .map(
+            (json) => BudgetWithCategory.fromJson(json as Map<String, dynamic>),
+          )
+          .toList();
     } catch (e) {
       throw Exception('Failed to fetch budgets: ${e.toString()}');
     }
   }
 
-  /// Get budget for specific category
-  Future<CategoryBudget> getCategoryBudget(String categoryId) async {
-    try {
-      final response = await _apiClient.get('/budgets/category/$categoryId');
-      return CategoryBudget.fromJson(response['data']);
-    } catch (e) {
-      throw Exception('Failed to fetch category budget: ${e.toString()}');
-    }
-  }
-
-  /// Get budget summary for current month
-  Future<BudgetSummary> getBudgetSummary() async {
-    try {
-      final response = await _apiClient.get('/budgets/summary');
-      return BudgetSummary.fromJson(response['data']);
-    } catch (e) {
-      throw Exception('Failed to fetch budget summary: ${e.toString()}');
-    }
-  }
-
-  /// Get budget summary for specific month
-  Future<BudgetSummary> getBudgetSummaryByMonth({
-    required String month,
+  /// Get budget summary (totals) for a specific month & year
+  ///
+  /// GET /budgets/summary?month=2&year=2026
+  Future<BudgetSummary> getBudgetSummary({
+    required int month,
     required int year,
   }) async {
     try {
       final response = await _apiClient.get(
         '/budgets/summary',
-        queryParams: {'month': month, 'year': year.toString()},
+        queryParams: {'month': month.toString(), 'year': year.toString()},
       );
-      return BudgetSummary.fromJson(response['data']);
+      return BudgetSummary.fromJson(response['data'] as Map<String, dynamic>);
     } catch (e) {
       throw Exception('Failed to fetch budget summary: ${e.toString()}');
     }
   }
 
-  /// Check remaining budget for a category
-  Future<double> getRemainingBudget(String categoryId) async {
+  /// Manually reallocate budget from one category to another
+  ///
+  /// POST /budgets/reallocate
+  Future<BudgetReallocation> reallocateBudget({
+    required String fromCategoryId,
+    required String toCategoryId,
+    required double amount,
+    String? reason,
+  }) async {
     try {
-      final response = await _apiClient.get(
-        '/budgets/category/$categoryId/remaining',
-      );
-      return (response['data']['remaining'] as num).toDouble();
+      final body = <String, dynamic>{
+        'from_category_id': fromCategoryId,
+        'to_category_id': toCategoryId,
+        'amount': amount,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      };
+
+      final response = await _apiClient.post('/budgets/reallocate', body: body);
+      return BudgetReallocation.fromJson(response['data']);
     } catch (e) {
-      throw Exception('Failed to fetch remaining budget: ${e.toString()}');
+      throw Exception('Failed to reallocate budget: ${e.toString()}');
     }
   }
 
-  /// Get budget history for a category
-  Future<List<CategoryBudget>> getCategoryBudgetHistory({
-    required String categoryId,
-    int? limit,
+  /// Get history of budget reallocations for a specific month & year
+  ///
+  /// GET /budgets/reallocations?month=2&year=2026
+  Future<List<BudgetReallocation>> getReallocations({
+    required int month,
+    required int year,
   }) async {
     try {
-      final queryParams = <String, String>{};
-      if (limit != null) {
-        queryParams['limit'] = limit.toString();
-      }
-
       final response = await _apiClient.get(
-        '/budgets/category/$categoryId/history',
-        queryParams: queryParams,
+        '/budgets/reallocations',
+        queryParams: {'month': month.toString(), 'year': year.toString()},
       );
 
       final List<dynamic> data = response['data'] ?? [];
-      return data.map((json) => CategoryBudget.fromJson(json)).toList();
+      return data
+          .map(
+            (json) => BudgetReallocation.fromJson(json as Map<String, dynamic>),
+          )
+          .toList();
     } catch (e) {
-      throw Exception('Failed to fetch budget history: ${e.toString()}');
+      throw Exception('Failed to fetch budget reallocations: ${e.toString()}');
     }
   }
 
-  /// Validate if expense amount is within budget
-  Future<bool> validateExpenseAgainstBudget({
-    required String categoryId,
-    required double amount,
-  }) async {
+  /// Cancel / delete a budget reallocation
+  ///
+  /// DELETE /budgets/reallocate/:id
+  Future<void> cancelReallocation(String id) async {
     try {
-      final response = await _apiClient.post(
-        '/budgets/validate',
-        body: {'categoryId': categoryId, 'amount': amount},
-      );
-      return response['data']['isValid'] as bool;
+      await _apiClient.delete('/budgets/reallocate/$id');
     } catch (e) {
-      throw Exception('Failed to validate expense: ${e.toString()}');
+      throw Exception('Failed to cancel reallocation: ${e.toString()}');
     }
   }
 }

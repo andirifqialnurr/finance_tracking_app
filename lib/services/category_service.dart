@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../models/expense_category.dart';
 import 'api_client.dart';
 
@@ -9,16 +10,17 @@ class CategoryService {
     : _apiClient = apiClient ?? ApiClient();
 
   /// Get all categories
+  /// [isActive] - optional filter for active/inactive categories
   Future<List<ExpenseCategory>> getCategories({bool? isActive}) async {
     try {
       final queryParams = <String, String>{};
       if (isActive != null) {
-        queryParams['isActive'] = isActive.toString();
+        queryParams['is_active'] = isActive.toString();
       }
 
       final response = await _apiClient.get(
         '/categories',
-        queryParams: queryParams,
+        queryParams: queryParams.isNotEmpty ? queryParams : null,
       );
 
       final List<dynamic> data = response['data'] ?? [];
@@ -43,16 +45,18 @@ class CategoryService {
     required String name,
     required ExpenseCategoryType type,
     required double monthlyBudget,
-    required int priority,
+    required int allocationPriority,
     bool isActive = true,
+    Map<String, dynamic>? metadata,
   }) async {
     try {
-      final body = {
+      final body = <String, dynamic>{
         'name': name,
-        'type': type.name.toUpperCase(),
-        'monthlyBudget': monthlyBudget,
-        'priority': priority,
-        'isActive': isActive,
+        'type': type.value,
+        'monthly_budget': monthlyBudget,
+        'allocation_priority': allocationPriority,
+        'is_active': isActive,
+        if (metadata != null) 'metadata': metadata,
       };
 
       final response = await _apiClient.post('/categories', body: body);
@@ -62,31 +66,38 @@ class CategoryService {
     }
   }
 
-  /// Update category
+  /// Update category — uses PATCH (not PUT)
   Future<ExpenseCategory> updateCategory({
     required String id,
     String? name,
     ExpenseCategoryType? type,
     double? monthlyBudget,
-    int? priority,
+    int? allocationPriority,
     bool? isActive,
+    Map<String, dynamic>? metadata,
   }) async {
     try {
       final body = <String, dynamic>{};
       if (name != null) body['name'] = name;
-      if (type != null) body['type'] = type.name.toUpperCase();
-      if (monthlyBudget != null) body['monthlyBudget'] = monthlyBudget;
-      if (priority != null) body['priority'] = priority;
-      if (isActive != null) body['isActive'] = isActive;
+      if (type != null) body['type'] = type.value;
+      if (monthlyBudget != null) body['monthly_budget'] = monthlyBudget;
+      if (allocationPriority != null)
+        body['allocation_priority'] = allocationPriority;
+      if (isActive != null) body['is_active'] = isActive;
+      if (metadata != null) body['metadata'] = metadata;
 
-      final response = await _apiClient.put('/categories/$id', body: body);
-      return ExpenseCategory.fromJson(response['data']);
+      final response = await _apiClient.patch('/categories/$id', body: body);
+      debugPrint('[CategoryService] updateCategory response: $response');
+      final data = response['data'];
+      if (data == null) throw Exception('response[data] is null');
+      return ExpenseCategory.fromJson(data as Map<String, dynamic>);
     } catch (e) {
+      debugPrint('[CategoryService] updateCategory ERROR: $e');
       throw Exception('Failed to update category: ${e.toString()}');
     }
   }
 
-  /// Delete category
+  /// Delete category — soft delete (sets is_active = false)
   Future<void> deleteCategory(String id) async {
     try {
       await _apiClient.delete('/categories/$id');
@@ -95,14 +106,10 @@ class CategoryService {
     }
   }
 
-  /// Toggle category active status
+  /// Toggle category active status using PATCH /categories/:id
   Future<ExpenseCategory> toggleCategoryStatus(String id, bool isActive) async {
     try {
-      final response = await _apiClient.put(
-        '/categories/$id/toggle',
-        body: {'isActive': isActive},
-      );
-      return ExpenseCategory.fromJson(response['data']);
+      return await updateCategory(id: id, isActive: isActive);
     } catch (e) {
       throw Exception('Failed to toggle category status: ${e.toString()}');
     }
@@ -115,7 +122,7 @@ class CategoryService {
     try {
       final response = await _apiClient.get(
         '/categories',
-        queryParams: {'type': type.name.toUpperCase()},
+        queryParams: {'type': type.value},
       );
 
       final List<dynamic> data = response['data'] ?? [];

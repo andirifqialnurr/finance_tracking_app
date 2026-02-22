@@ -9,30 +9,56 @@ class ExpenseService {
     : _apiClient = apiClient ?? ApiClient();
 
   /// Get all expenses with optional filters
-  Future<List<Expense>> getExpenses({
+  ///
+  /// Query params match backend:
+  /// - category_id, month, year: context filters
+  /// - start_date, end_date: flexible date range (YYYY-MM-DD)
+  /// - min_amount, max_amount: amount range filter
+  /// - search: description partial match
+  /// - page, limit: pagination
+  /// - sort: date_asc, date_desc, amount_asc, amount_desc
+  Future<ExpensePaginatedResponse> getExpenses({
     String? categoryId,
-    String? month,
+    int? month,
     int? year,
+    String? startDate,
+    String? endDate,
+    double? minAmount,
+    double? maxAmount,
+    String? search,
+    int page = 1,
+    int limit = 20,
+    String sort = 'date_desc',
   }) async {
     try {
-      final queryParams = <String, String>{};
-      if (categoryId != null) queryParams['categoryId'] = categoryId;
-      if (month != null) queryParams['month'] = month;
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'limit': limit.toString(),
+        'sort': sort,
+      };
+      if (categoryId != null && categoryId.isNotEmpty) {
+        queryParams['category_id'] = categoryId;
+      }
+      if (month != null) queryParams['month'] = month.toString();
       if (year != null) queryParams['year'] = year.toString();
+      if (startDate != null) queryParams['start_date'] = startDate;
+      if (endDate != null) queryParams['end_date'] = endDate;
+      if (minAmount != null) queryParams['min_amount'] = minAmount.toString();
+      if (maxAmount != null) queryParams['max_amount'] = maxAmount.toString();
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
       final response = await _apiClient.get(
         '/expenses',
         queryParams: queryParams,
       );
 
-      final List<dynamic> data = response['data'] ?? [];
-      return data.map((json) => Expense.fromJson(json)).toList();
+      return ExpensePaginatedResponse.fromJson(response);
     } catch (e) {
       throw Exception('Failed to fetch expenses: ${e.toString()}');
     }
   }
 
-  /// Get expense by ID
+  /// Get expense by ID (returns full category object embedded)
   Future<Expense> getExpenseById(String id) async {
     try {
       final response = await _apiClient.get('/expenses/$id');
@@ -43,28 +69,32 @@ class ExpenseService {
   }
 
   /// Create new expense
-  Future<Expense> createExpense({
+  /// Returns expense + updated budget remaining + optional alert
+  Future<ExpenseCreateResponse> createExpense({
     required String categoryId,
     required double amount,
     required DateTime date,
     String? description,
   }) async {
     try {
-      final body = {
-        'categoryId': categoryId,
+      final body = <String, dynamic>{
+        'category_id': categoryId,
         'amount': amount,
-        'date': date.toIso8601String(),
-        if (description != null) 'description': description,
+        'date': date.toUtc().toIso8601String(),
       };
+      if (description != null && description.isNotEmpty) {
+        body['description'] = description;
+      }
 
       final response = await _apiClient.post('/expenses', body: body);
-      return Expense.fromJson(response['data']);
+      return ExpenseCreateResponse.fromJson(response['data']);
     } catch (e) {
       throw Exception('Failed to create expense: ${e.toString()}');
     }
   }
 
-  /// Update expense
+  /// Update expense — uses PATCH (not PUT)
+  /// Supports changing category, amount adjusted in budget accordingly
   Future<Expense> updateExpense({
     required String id,
     String? categoryId,
@@ -74,62 +104,24 @@ class ExpenseService {
   }) async {
     try {
       final body = <String, dynamic>{};
-      if (categoryId != null) body['categoryId'] = categoryId;
+      if (categoryId != null) body['category_id'] = categoryId;
       if (amount != null) body['amount'] = amount;
-      if (date != null) body['date'] = date.toIso8601String();
+      if (date != null) body['date'] = date.toUtc().toIso8601String();
       if (description != null) body['description'] = description;
 
-      final response = await _apiClient.put('/expenses/$id', body: body);
-      return Expense.fromJson(response['data']);
+      final response = await _apiClient.patch('/expenses/$id', body: body);
+      return Expense.fromJson(response['data']['expense'] ?? response['data']);
     } catch (e) {
       throw Exception('Failed to update expense: ${e.toString()}');
     }
   }
 
-  /// Delete expense
+  /// Delete expense — soft delete + restore budget
   Future<void> deleteExpense(String id) async {
     try {
       await _apiClient.delete('/expenses/$id');
     } catch (e) {
       throw Exception('Failed to delete expense: ${e.toString()}');
-    }
-  }
-
-  /// Get total expenses for period
-  Future<double> getTotalExpenses({
-    String? categoryId,
-    String? month,
-    int? year,
-  }) async {
-    try {
-      final queryParams = <String, String>{};
-      if (categoryId != null) queryParams['categoryId'] = categoryId;
-      if (month != null) queryParams['month'] = month;
-      if (year != null) queryParams['year'] = year.toString();
-
-      final response = await _apiClient.get(
-        '/expenses/total',
-        queryParams: queryParams,
-      );
-
-      return (response['data']['total'] as num).toDouble();
-    } catch (e) {
-      throw Exception('Failed to fetch total expenses: ${e.toString()}');
-    }
-  }
-
-  /// Search expenses by description
-  Future<List<Expense>> searchExpenses(String query) async {
-    try {
-      final response = await _apiClient.get(
-        '/expenses/search',
-        queryParams: {'q': query},
-      );
-
-      final List<dynamic> data = response['data'] ?? [];
-      return data.map((json) => Expense.fromJson(json)).toList();
-    } catch (e) {
-      throw Exception('Failed to search expenses: ${e.toString()}');
     }
   }
 }

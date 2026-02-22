@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/expense_category.dart';
+import '../../providers/category_provider.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_card.dart';
 import '../../utils/validators.dart';
+import '../../utils/app_toast.dart';
 
 class AddEditCategoryScreen extends StatefulWidget {
   final ExpenseCategory? category; // If null, create new category
@@ -22,11 +25,10 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _budgetController = TextEditingController();
-  final _priorityController = TextEditingController();
 
-  bool _isSubmitting = false;
   ExpenseCategoryType _selectedType = ExpenseCategoryType.dailyContinuous;
   bool _isActive = true;
+  int _selectedPriority = 1;
 
   @override
   void initState() {
@@ -36,7 +38,7 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
       _budgetController.text = widget.category!.monthlyBudget.toStringAsFixed(
         0,
       );
-      _priorityController.text = widget.category!.priority.toString();
+      _selectedPriority = _priorityToTier(widget.category!.priority);
       _selectedType = widget.category!.type;
       _isActive = widget.category!.isActive;
     }
@@ -46,7 +48,6 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
   void dispose() {
     _nameController.dispose();
     _budgetController.dispose();
-    _priorityController.dispose();
     super.dispose();
   }
 
@@ -118,14 +119,7 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
             // Priority
             _buildSectionTitle('Priority'),
             const SizedBox(height: AppDimensions.spacing12),
-            _buildPriorityInput(),
-            const SizedBox(height: AppDimensions.spacing8),
-            Text(
-              'Lower number = Higher priority',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.textMuted,
-              ),
-            ),
+            _buildPriorityDropdown(),
             const SizedBox(height: AppDimensions.spacing24),
 
             // Active Toggle
@@ -135,12 +129,14 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
             ],
 
             // Submit Button
-            AppButton(
-              text: isEditing ? 'Save Changes' : 'Create Category',
-              isFullWidth: true,
-              isLoading: _isSubmitting,
-              onPressed: _submitForm,
-              variant: AppButtonVariant.primary,
+            Consumer<CategoryProvider>(
+              builder: (context, provider, _) => AppButton(
+                text: isEditing ? 'Save Changes' : 'Create Category',
+                isFullWidth: true,
+                isLoading: provider.isSubmitting,
+                onPressed: _submitForm,
+                variant: AppButtonVariant.primary,
+              ),
             ),
           ],
         ),
@@ -200,13 +196,34 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
     );
   }
 
-  Widget _buildPriorityInput() {
-    return TextFormField(
-      controller: _priorityController,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: const InputDecoration(hintText: 'e.g., 1, 2, 3...'),
-      validator: (value) => Validators.required(value, fieldName: 'Priority'),
+  int _priorityToTier(int p) {
+    if (p <= 2) return 1;
+    if (p <= 4) return 3;
+    if (p <= 6) return 5;
+    return 7;
+  }
+
+  Widget _buildPriorityDropdown() {
+    const items = [
+      {'label': 'Important', 'value': 1},
+      {'label': 'High', 'value': 3},
+      {'label': 'Medium', 'value': 5},
+      {'label': 'Low', 'value': 7},
+    ];
+    return DropdownButtonFormField<int>(
+      value: _selectedPriority,
+      decoration: const InputDecoration(hintText: 'Select priority level'),
+      items: items
+          .map(
+            (item) => DropdownMenuItem<int>(
+              value: item['value'] as int,
+              child: Text(item['label'] as String),
+            ),
+          )
+          .toList(),
+      onChanged: (value) {
+        if (value != null) setState(() => _selectedPriority = value);
+      },
     );
   }
 
@@ -258,38 +275,46 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
 
   void _submitForm() async {
     if (_formKey.currentState!.validate()) {
-      setState(() => _isSubmitting = true);
+      final name = _nameController.text.trim();
+      final budget = double.tryParse(_budgetController.text) ?? 0;
+      final priority = _selectedPriority;
 
-      try {
-        // TODO: Submit to API
-        await Future.delayed(const Duration(seconds: 2));
+      bool success;
+      if (isEditing) {
+        success = await context.read<CategoryProvider>().updateCategory(
+          id: widget.category!.id,
+          name: name,
+          type: _selectedType,
+          monthlyBudget: budget,
+          allocationPriority: priority,
+          isActive: _isActive,
+        );
+      } else {
+        success = await context.read<CategoryProvider>().createCategory(
+          name: name,
+          type: _selectedType,
+          monthlyBudget: budget,
+          allocationPriority: priority,
+          isActive: _isActive,
+        );
+      }
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                isEditing
-                    ? AppConstants.successCategoryUpdated
-                    : AppConstants.successCategorySaved,
-              ),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isSubmitting = false);
-        }
+      if (!mounted) return;
+
+      if (success) {
+        AppToast.showSuccess(
+          context,
+          isEditing
+              ? AppConstants.successCategoryUpdated
+              : AppConstants.successCategorySaved,
+        );
+        Navigator.pop(context);
+      } else {
+        final error = context.read<CategoryProvider>().submitError;
+        AppToast.showError(
+          context,
+          error ?? 'Failed to save category. Please try again.',
+        );
       }
     }
   }
@@ -321,34 +346,21 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
   }
 
   void _deleteCategory() async {
-    setState(() => _isSubmitting = true);
+    final success = await context.read<CategoryProvider>().deleteCategory(
+      widget.category!.id,
+    );
 
-    try {
-      // TODO: Delete via API
-      await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Category deleted successfully'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+    if (success) {
+      AppToast.showSuccess(context, 'Category deleted successfully.');
+      Navigator.pop(context);
+    } else {
+      final error = context.read<CategoryProvider>().submitError;
+      AppToast.showError(
+        context,
+        error ?? 'Failed to delete category. Please try again.',
+      );
     }
   }
 }

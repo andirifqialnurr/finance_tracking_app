@@ -27,15 +27,21 @@ class ExpenseCategory {
   // From JSON
   factory ExpenseCategory.fromJson(Map<String, dynamic> json) {
     return ExpenseCategory(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      type: ExpenseCategoryType.fromString(json['type'] as String),
-      monthlyBudget: (json['monthly_budget'] as num).toDouble(),
-      allocationPriority: json['allocation_priority'] as int,
-      isActive: json['is_active'] as bool,
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      type: ExpenseCategoryType.fromString(
+        json['type'] as String? ?? 'expense',
+      ),
+      monthlyBudget: (json['monthly_budget'] as num? ?? 0).toDouble(),
+      allocationPriority: json['allocation_priority'] as int? ?? 0,
+      isActive: json['is_active'] as bool? ?? true,
       metadata: json['metadata'] as Map<String, dynamic>?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : DateTime.now(),
     );
   }
 
@@ -95,6 +101,13 @@ class ExpenseCategory {
   // Alias for UI convenience
   int get priority => allocationPriority;
 
+  String get priorityLabel {
+    if (allocationPriority <= 2) return 'Important';
+    if (allocationPriority <= 4) return 'High';
+    if (allocationPriority <= 6) return 'Medium';
+    return 'Low';
+  }
+
   @override
   String toString() {
     return 'ExpenseCategory(id: $id, name: $name, type: ${type.value}, monthlyBudget: $monthlyBudget)';
@@ -112,17 +125,17 @@ enum ExpenseCategoryType {
   const ExpenseCategoryType(this.value);
 
   static ExpenseCategoryType fromString(String value) {
-    switch (value) {
-      case AppConstants.categoryTypeSubscription:
+    switch (value.toUpperCase()) {
+      case 'SUBSCRIPTION':
         return ExpenseCategoryType.subscription;
-      case AppConstants.categoryTypeDailyContinuous:
+      case 'DAILY_CONTINUOUS':
         return ExpenseCategoryType.dailyContinuous;
-      case AppConstants.categoryTypeUsageBased:
+      case 'USAGE_BASED':
         return ExpenseCategoryType.usageBased;
-      case AppConstants.categoryTypeOneTime:
+      case 'ONE_TIME':
         return ExpenseCategoryType.oneTime;
       default:
-        throw ArgumentError('Invalid category type: $value');
+        return ExpenseCategoryType.oneTime; // safe fallback instead of throwing
     }
   }
 

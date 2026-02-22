@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/navigation/routes.dart';
+import '../../models/transaction.dart';
+import '../../providers/budget_provider.dart';
+import '../../providers/transaction_provider.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/dashboard/summary_card.dart';
@@ -17,55 +21,21 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final double totalIncome = 8000000;
-  final double totalAllocated = 2099000;
-  final double totalSpent = 1850000;
-  final double totalRemaining = 249000;
-
   // Sample chart data
   final List<MonthlyData> chartData = [
     MonthlyData(month: 1, year: 2026, income: 8000000, expense: 1800000),
     MonthlyData(month: 2, year: 2026, income: 8000000, expense: 1850000),
   ];
 
-  // Sample recent transactions (5 most recent)
-  final List<Map<String, dynamic>> recentTransactions = [
-    {
-      'type': 'expense',
-      'title': 'Makan',
-      'amount': 40000.0,
-      'date': DateTime(2026, 2, 18, 12, 30),
-      'description': 'Makan siang Warteg',
-    },
-    {
-      'type': 'expense',
-      'title': 'Bensin',
-      'amount': 35000.0,
-      'date': DateTime(2026, 2, 17, 8, 15),
-      'description': 'Isi bensin Shell',
-    },
-    {
-      'type': 'expense',
-      'title': 'Makan',
-      'amount': 45000.0,
-      'date': DateTime(2026, 2, 16, 19, 0),
-      'description': 'Makan malam',
-    },
-    {
-      'type': 'expense',
-      'title': 'Netflix',
-      'amount': 120000.0,
-      'date': DateTime(2026, 2, 15, 10, 0),
-      'description': 'Netflix Premium',
-    },
-    {
-      'type': 'income',
-      'title': 'Freelance Project',
-      'amount': 2000000.0,
-      'date': DateTime(2026, 2, 5, 15, 0),
-      'description': 'Web development',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final now = DateTime.now();
+      context.read<TransactionProvider>().fetchTransactions(sort: 'date_desc');
+      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +89,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHeader() {
-    final monthYear = 'February 2026'; // TODO: Get from current period
+    final provider = context.watch<BudgetProvider>();
+    final monthYear = Formatters.formatMonthYear(provider.month, provider.year);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,48 +108,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSummaryCards() {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: AppDimensions.spacing16,
-      mainAxisSpacing: AppDimensions.spacing16,
-      childAspectRatio: 1.4,
-      children: [
-        SummaryCard(
-          title: 'Total Income',
-          amount: totalIncome,
-          icon: Icons.arrow_downward,
-          iconColor: AppColors.success,
-          onTap: () {
-            Navigator.pushNamed(context, Routes.incomeHistory);
-          },
-        ),
-        SummaryCard(
-          title: 'Allocated',
-          amount: totalAllocated,
-          icon: Icons.account_balance_wallet_outlined,
-          iconColor: AppColors.info,
-          onTap: () {
-            Navigator.pushNamed(context, Routes.budgetOverview);
-          },
-        ),
-        SummaryCard(
-          title: 'Spent',
-          amount: totalSpent,
-          icon: Icons.arrow_upward,
-          iconColor: AppColors.error,
-          onTap: () {
-            Navigator.pushNamed(context, Routes.expenseHistory);
-          },
-        ),
-        SummaryCard(
-          title: 'Remaining',
-          amount: totalRemaining,
-          icon: Icons.savings_outlined,
-          iconColor: AppColors.warning,
-        ),
-      ],
+    return Consumer<BudgetProvider>(
+      builder: (context, budgetProvider, _) {
+        final summary = budgetProvider.summary;
+        final totalIncome = summary?.totalIncome ?? 0.0;
+        final totalAllocated = summary?.totalAllocated ?? 0.0;
+        final totalSpent = summary?.totalSpent ?? 0.0;
+        final totalRemaining = summary?.totalRemaining ?? 0.0;
+
+        return GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: AppDimensions.spacing16,
+          mainAxisSpacing: AppDimensions.spacing16,
+          childAspectRatio: 1.4,
+          children: [
+            SummaryCard(
+              title: 'Total Income',
+              amount: totalIncome,
+              icon: Icons.arrow_downward,
+              iconColor: AppColors.success,
+              onTap: () {
+                Navigator.pushNamed(context, Routes.incomeHistory);
+              },
+            ),
+            SummaryCard(
+              title: 'Allocated',
+              amount: totalAllocated,
+              icon: Icons.account_balance_wallet_outlined,
+              iconColor: AppColors.info,
+              onTap: () async {
+                await Navigator.pushNamed(context, Routes.budgetOverview);
+                if (!mounted) return;
+                final now = DateTime.now();
+                context.read<BudgetProvider>().fetchAll(
+                  month: now.month,
+                  year: now.year,
+                );
+              },
+            ),
+            SummaryCard(
+              title: 'Spent',
+              amount: totalSpent,
+              icon: Icons.arrow_upward,
+              iconColor: AppColors.error,
+              onTap: () {
+                Navigator.pushNamed(context, Routes.expenseHistory);
+              },
+            ),
+            SummaryCard(
+              title: 'Remaining',
+              amount: totalRemaining,
+              icon: Icons.savings_outlined,
+              iconColor: AppColors.warning,
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -210,41 +197,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildRecentActivity() {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Consumer<TransactionProvider>(
+      builder: (context, provider, _) {
+        final recent = provider.transactions.take(5).toList();
+        return AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Recent Activity', style: AppTypography.titleMedium),
-              TextButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, Routes.transactionHistory);
-                },
-                child: const Text('View All'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Recent Activity', style: AppTypography.titleMedium),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, Routes.transactionHistory);
+                    },
+                    child: const Text('View All'),
+                  ),
+                ],
               ),
+              const SizedBox(height: AppDimensions.spacing16),
+              if (provider.isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      vertical: AppDimensions.spacing16,
+                    ),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (recent.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: AppDimensions.spacing16,
+                  ),
+                  child: Center(
+                    child: Text(
+                      'No recent transactions',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ...recent.asMap().entries.map((entry) {
+                  final isLast = entry.key == recent.length - 1;
+                  return _buildTransactionItem(entry.value, isLast);
+                }),
             ],
           ),
-          const SizedBox(height: AppDimensions.spacing16),
-          // Recent transactions list
-          ...recentTransactions.asMap().entries.map((entry) {
-            final index = entry.key;
-            final transaction = entry.value;
-            final isLast = index == recentTransactions.length - 1;
-            return _buildTransactionItem(transaction, isLast);
-          }),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> transaction, bool isLast) {
-    final isIncome = transaction['type'] == 'income';
-    final title = transaction['title'] as String;
-    final amount = transaction['amount'] as double;
-    final date = transaction['date'] as DateTime;
-    final description = transaction['description'] as String?;
+  Widget _buildTransactionItem(Transaction transaction, bool isLast) {
+    final isIncome = transaction.isIncome;
+    final title = isIncome
+        ? (transaction.source ?? 'Income')
+        : (transaction.category?.name ?? 'Expense');
 
     return Column(
       children: [
@@ -283,7 +295,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Text(title, style: AppTypography.titleSmall),
                       const SizedBox(height: AppDimensions.spacing4),
                       Text(
-                        description ?? '',
+                        transaction.description ?? '',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.textMuted,
                         ),
@@ -299,7 +311,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${isIncome ? '+' : '-'}${Formatters.formatCurrencyCompact(amount)}',
+                      '${isIncome ? '+' : '-'}${Formatters.formatCurrencyCompact(transaction.amount)}',
                       style: AppTypography.amountSmall.copyWith(
                         color: isIncome ? AppColors.success : AppColors.error,
                         fontWeight: FontWeight.w600,
@@ -307,7 +319,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: AppDimensions.spacing4),
                     Text(
-                      Formatters.formatDate(date),
+                      Formatters.formatDate(transaction.date),
                       style: AppTypography.labelSmall.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -408,8 +420,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData() async {
-    // TODO: Implement data refresh
-    await Future.delayed(const Duration(seconds: 1));
+    final now = DateTime.now();
+    await Future.wait([
+      context.read<TransactionProvider>().refresh(),
+      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year),
+    ]);
   }
 
   void _openNotifications() {

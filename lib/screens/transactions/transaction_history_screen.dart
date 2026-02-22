@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/navigation/routes.dart';
+import '../../models/transaction.dart';
+import '../../providers/transaction_provider.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
@@ -18,111 +21,145 @@ class TransactionHistoryScreen extends StatefulWidget {
 
 class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
     with SingleTickerProviderStateMixin {
-  bool _isLoading = false;
   late TabController _tabController;
 
-  // Sample transaction data
-  final List<Map<String, dynamic>> _allTransactions = [
-    {
-      'type': 'income',
-      'source': 'Gaji Februari',
-      'amount': 8000000.0,
-      'date': DateTime(2026, 2, 1, 9, 0),
-      'description': 'Gaji bulanan',
-    },
-    {
-      'type': 'expense',
-      'category': 'Makan',
-      'amount': 40000.0,
-      'date': DateTime(2026, 2, 18, 12, 30),
-      'description': 'Makan siang Warteg',
-    },
-    {
-      'type': 'expense',
-      'category': 'Bensin',
-      'amount': 35000.0,
-      'date': DateTime(2026, 2, 17, 8, 15),
-      'description': 'Isi bensin Shell',
-    },
-    {
-      'type': 'expense',
-      'category': 'Makan',
-      'amount': 45000.0,
-      'date': DateTime(2026, 2, 16, 19, 0),
-      'description': 'Makan malam',
-    },
-    {
-      'type': 'expense',
-      'category': 'Netflix',
-      'amount': 120000.0,
-      'date': DateTime(2026, 2, 15, 10, 0),
-      'description': 'Netflix Premium subscription',
-    },
-    {
-      'type': 'expense',
-      'category': 'Spotify',
-      'amount': 60000.0,
-      'date': DateTime(2026, 2, 10, 14, 30),
-      'description': 'Spotify Premium',
-    },
-    {
-      'type': 'income',
-      'source': 'Freelance Project X',
-      'amount': 2000000.0,
-      'date': DateTime(2026, 2, 5, 15, 0),
-      'description': 'Project web development',
-    },
-  ];
+  static const _tabTypes = [null, 'income', 'expense'];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<TransactionProvider>().fetchTransactions();
+    });
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      context.read<TransactionProvider>().filterByType(
+        _tabTypes[_tabController.index],
+      );
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
-  }
-
-  List<Map<String, dynamic>> get _filteredTransactions {
-    if (_tabController.index == 0) {
-      return _allTransactions;
-    } else if (_tabController.index == 1) {
-      return _allTransactions.where((t) => t['type'] == 'income').toList();
-    } else {
-      return _allTransactions.where((t) => t['type'] == 'expense').toList();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Transaction History'),
-        bottom: TabBar(
-          controller: _tabController,
-          onTap: (index) => setState(() {}),
-          tabs: const [
-            Tab(text: 'All'),
-            Tab(text: 'Income'),
-            Tab(text: 'Expenses'),
-          ],
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        child: _isLoading
-            ? const LoadingIndicator(message: 'Loading transactions...')
-            : _buildTransactionList(),
+      appBar: AppBar(title: const Text('Transaction History')),
+      body: Consumer<TransactionProvider>(
+        builder: (context, provider, _) {
+          return Column(
+            children: [
+              // Period Summary Card — always visible, updates per tab
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppDimensions.spacing16,
+                  AppDimensions.spacing16,
+                  AppDimensions.spacing16,
+                  0,
+                ),
+                child: _buildSummaryCard(
+                  provider.summary ??
+                      TransactionSummary(
+                        totalIncome: 0,
+                        totalExpense: 0,
+                        netBalance: 0,
+                      ),
+                ),
+              ),
+
+              // Tab bar wrapped in card
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimensions.spacing16,
+                  vertical: AppDimensions.spacing12,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: AppDimensions.borderRadiusLG,
+                    border: Border.all(color: AppColors.cardBorder),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.shadow,
+                        blurRadius: AppDimensions.elevationSM,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: AppDimensions.borderRadiusLG,
+                    child: TabBar(
+                      controller: _tabController,
+                      tabs: const [
+                        Tab(text: 'All'),
+                        Tab(text: 'Income'),
+                        Tab(text: 'Expenses'),
+                      ],
+                      indicator: const BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: AppDimensions.borderRadiusMD,
+                      ),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      labelColor: AppColors.textOnDark,
+                      unselectedLabelColor: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Transaction list / loading / error
+              Expanded(child: _buildContent(provider)),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildTransactionList() {
-    final transactions = _filteredTransactions;
+  Widget _buildContent(TransactionProvider provider) {
+    if (provider.isLoading) {
+      return const LoadingIndicator(message: 'Loading transactions...');
+    }
+
+    if (provider.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              provider.error!,
+              style: AppTypography.bodyMedium.copyWith(color: AppColors.error),
+            ),
+            const SizedBox(height: AppDimensions.spacing16),
+            ElevatedButton(
+              onPressed: provider.refresh,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: provider.refresh,
+      child: _buildTransactionList(provider),
+    );
+  }
+
+  Widget _buildTransactionList(TransactionProvider provider) {
+    final transactions = provider.transactions;
 
     if (transactions.isEmpty) {
       return EmptyState(
@@ -149,18 +186,6 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
 
     return CustomScrollView(
       slivers: [
-        // Summary Card
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: AppDimensions.screenPadding,
-            child: _buildSummaryCard(),
-          ),
-        ),
-
-        const SliverToBoxAdapter(
-          child: SizedBox(height: AppDimensions.spacing16),
-        ),
-
         // Transactions grouped by date
         ...groupedTransactions.entries.map((entry) {
           return SliverToBoxAdapter(
@@ -192,6 +217,29 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
           );
         }),
 
+        // Load more
+        if (provider.isLoadingMore)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(AppDimensions.spacing16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
+
+        if (provider.hasNextPage && !provider.isLoadingMore)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: AppDimensions.spacing8,
+                horizontal: AppDimensions.spacing16,
+              ),
+              child: TextButton(
+                onPressed: provider.fetchNextPage,
+                child: const Text('Load more'),
+              ),
+            ),
+          ),
+
         const SliverToBoxAdapter(
           child: SizedBox(height: AppDimensions.spacing24),
         ),
@@ -199,16 +247,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
     );
   }
 
-  Widget _buildSummaryCard() {
-    final transactions = _filteredTransactions;
-    final totalIncome = transactions
-        .where((t) => t['type'] == 'income')
-        .fold(0.0, (sum, t) => sum + (t['amount'] as double));
-    final totalExpense = transactions
-        .where((t) => t['type'] == 'expense')
-        .fold(0.0, (sum, t) => sum + (t['amount'] as double));
-    final balance = totalIncome - totalExpense;
-
+  Widget _buildSummaryCard(TransactionSummary summary) {
     return AppCard(
       child: Column(
         children: [
@@ -220,7 +259,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
               if (_tabController.index == 0 || _tabController.index == 1)
                 _SummaryItem(
                   label: 'Income',
-                  amount: totalIncome,
+                  amount: summary.totalIncome,
                   color: AppColors.success,
                 ),
               if (_tabController.index == 0)
@@ -228,7 +267,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
               if (_tabController.index == 0 || _tabController.index == 2)
                 _SummaryItem(
                   label: 'Expenses',
-                  amount: totalExpense,
+                  amount: summary.totalExpense,
                   color: AppColors.error,
                 ),
               if (_tabController.index == 0)
@@ -236,8 +275,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
               if (_tabController.index == 0)
                 _SummaryItem(
                   label: 'Balance',
-                  amount: balance,
-                  color: balance >= 0 ? AppColors.success : AppColors.error,
+                  amount: summary.netBalance,
+                  color: summary.netBalance >= 0
+                      ? AppColors.success
+                      : AppColors.error,
                 ),
             ],
           ),
@@ -246,12 +287,11 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> transaction) {
-    final isIncome = transaction['type'] == 'income';
-    final title = isIncome ? transaction['source'] : transaction['category'];
-    final amount = transaction['amount'] as double;
-    final date = transaction['date'] as DateTime;
-    final description = transaction['description'] as String?;
+  Widget _buildTransactionItem(Transaction transaction) {
+    final isIncome = transaction.isIncome;
+    final title = isIncome
+        ? (transaction.source ?? 'Income')
+        : (transaction.category?.name ?? 'Expense');
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.spacing8),
@@ -281,13 +321,14 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: AppTypography.titleSmall),
-                  if (description != null && description.isNotEmpty)
+                  if (transaction.description != null &&
+                      transaction.description!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(
                         top: AppDimensions.spacing4,
                       ),
                       child: Text(
-                        description,
+                        transaction.description!,
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.textMuted,
                         ),
@@ -297,7 +338,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
                     ),
                   const SizedBox(height: AppDimensions.spacing4),
                   Text(
-                    '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
+                    '${transaction.date.hour.toString().padLeft(2, '0')}:${transaction.date.minute.toString().padLeft(2, '0')}',
                     style: AppTypography.labelSmall.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -307,7 +348,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
             ),
             // Amount
             Text(
-              '${isIncome ? '+' : '-'}${Formatters.formatCurrency(amount)}',
+              '${isIncome ? '+' : '-'}${Formatters.formatCurrency(transaction.amount)}',
               style: AppTypography.amountSmall.copyWith(
                 color: isIncome ? AppColors.success : AppColors.error,
                 fontWeight: FontWeight.w600,
@@ -319,34 +360,21 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
     );
   }
 
-  Map<String, List<Map<String, dynamic>>> _groupTransactionsByDate(
-    List<Map<String, dynamic>> transactions,
+  Map<String, List<Transaction>> _groupTransactionsByDate(
+    List<Transaction> transactions,
   ) {
-    final Map<String, List<Map<String, dynamic>>> grouped = {};
+    final Map<String, List<Transaction>> grouped = {};
 
     // Sort transactions by date (newest first)
-    final sortedTransactions = List<Map<String, dynamic>>.from(
-      transactions,
-    )..sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+    final sorted = List<Transaction>.from(transactions)
+      ..sort((a, b) => b.date.compareTo(a.date));
 
-    for (var transaction in sortedTransactions) {
-      final date = transaction['date'] as DateTime;
-      final dateKey = Formatters.formatDate(date);
-
-      if (!grouped.containsKey(dateKey)) {
-        grouped[dateKey] = [];
-      }
-      grouped[dateKey]!.add(transaction);
+    for (final tx in sorted) {
+      final dateKey = Formatters.formatDate(tx.date);
+      grouped.putIfAbsent(dateKey, () => []).add(tx);
     }
 
     return grouped;
-  }
-
-  Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    // TODO: Fetch transaction data from API
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
   }
 }
 

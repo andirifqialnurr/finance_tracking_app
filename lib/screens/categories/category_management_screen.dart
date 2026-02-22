@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../models/expense_category.dart';
+import '../../providers/category_provider.dart';
+import '../../utils/app_toast.dart';
 import '../../widgets/categories/category_list_item.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
@@ -16,141 +19,111 @@ class CategoryManagementScreen extends StatefulWidget {
 }
 
 class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
-  bool _isLoading = false;
-  bool _showInactive = false;
+  bool _showInactive = true;
 
-  // Sample categories
-  final List<ExpenseCategory> _categories = [
-    ExpenseCategory(
-      id: '1',
-      name: 'Makan',
-      type: ExpenseCategoryType.dailyContinuous,
-      monthlyBudget: 1240000,
-      allocationPriority: 1,
-      isActive: true,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-    ExpenseCategory(
-      id: '2',
-      name: 'Bensin',
-      type: ExpenseCategoryType.usageBased,
-      monthlyBudget: 176000,
-      allocationPriority: 2,
-      isActive: true,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-    ExpenseCategory(
-      id: '3',
-      name: 'Netflix',
-      type: ExpenseCategoryType.subscription,
-      monthlyBudget: 120000,
-      allocationPriority: 3,
-      isActive: true,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-    ExpenseCategory(
-      id: '4',
-      name: 'Internet',
-      type: ExpenseCategoryType.subscription,
-      monthlyBudget: 100000,
-      allocationPriority: 4,
-      isActive: true,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-    ExpenseCategory(
-      id: '5',
-      name: 'Entertainment',
-      type: ExpenseCategoryType.oneTime,
-      monthlyBudget: 500000,
-      allocationPriority: 5,
-      isActive: false,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CategoryProvider>().fetchCategories();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final filteredCategories = _showInactive
-        ? _categories
-        : _categories.where((c) => c.isActive).toList();
+    return Consumer<CategoryProvider>(
+      builder: (context, provider, _) {
+        final filteredCategories = _showInactive
+            ? provider.categories
+            : provider.categories.where((c) => c.isActive).toList();
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Manage Categories'),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _showInactive
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-            ),
-            onPressed: () {
-              setState(() {
-                _showInactive = !_showInactive;
-              });
-            },
-            tooltip: _showInactive ? 'Hide Inactive' : 'Show Inactive',
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const LoadingIndicator(message: 'Loading categories...')
-          : filteredCategories.isEmpty
-          ? EmptyState(
-              icon: Icons.category_outlined,
-              title: 'No Categories',
-              message: 'Start by creating your first expense category',
-              actionLabel: 'Add Category',
-              onAction: _navigateToAddCategory,
-            )
-          : RefreshIndicator(
-              onRefresh: _refreshData,
-              child: CustomScrollView(
-                slivers: [
-                  // Summary Card
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: AppDimensions.screenPadding,
-                      child: _buildSummaryCard(),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing16),
-                  ),
-
-                  // Categories by Type
-                  ..._buildCategoriesByType(filteredCategories),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing80),
-                  ),
-                ],
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: const Text('Manage Categories'),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _showInactive
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _showInactive = !_showInactive;
+                  });
+                },
+                tooltip: _showInactive ? 'Hide Inactive' : 'Show Inactive',
               ),
+            ],
+          ),
+          body: provider.isLoading
+              ? const LoadingIndicator(message: 'Loading categories...')
+              : provider.error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        provider.error!,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.error,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppDimensions.spacing16),
+                      ElevatedButton(
+                        onPressed: provider.refresh,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : filteredCategories.isEmpty
+              ? EmptyState(
+                  icon: Icons.category_outlined,
+                  title: 'No Categories',
+                  message: 'Start by creating your first expense category',
+                  actionLabel: 'Add Category',
+                  onAction: _navigateToAddCategory,
+                )
+              : RefreshIndicator(
+                  onRefresh: provider.refresh,
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: AppDimensions.screenPadding,
+                          child: _buildSummaryCard(provider),
+                        ),
+                      ),
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: AppDimensions.spacing16),
+                      ),
+                      ..._buildCategoriesByType(filteredCategories),
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: AppDimensions.spacing80),
+                      ),
+                    ],
+                  ),
+                ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _navigateToAddCategory,
+            backgroundColor: AppColors.primary,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'Add Category',
+              style: TextStyle(color: Colors.white),
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddCategory,
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Add Category',
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildSummaryCard() {
-    final activeCount = _categories.where((c) => c.isActive).length;
-    final totalBudget = _categories
-        .where((c) => c.isActive)
-        .fold(0.0, (sum, c) => sum + c.monthlyBudget);
+  Widget _buildSummaryCard(CategoryProvider provider) {
+    final activeCount = provider.activeCount;
+    final totalBudget = provider.totalActiveBudget;
 
     return Container(
       padding: AppDimensions.paddingMD,
@@ -244,38 +217,33 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     }
   }
 
-  void _toggleCategory(ExpenseCategory category, bool value) {
-    setState(() {
-      // TODO: API call to toggle category
-      final index = _categories.indexWhere((c) => c.id == category.id);
-      if (index != -1) {
-        _categories[index] = category.copyWith(isActive: value);
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Category ${value ? 'activated' : 'deactivated'}'),
-        backgroundColor: value ? AppColors.success : AppColors.warning,
-      ),
-    );
+  void _toggleCategory(ExpenseCategory category, bool value) async {
+    final provider = context.read<CategoryProvider>();
+    final success = await provider.toggleStatus(category.id, value);
+    if (!mounted) return;
+    if (success) {
+      AppToast.showSuccess(
+        context,
+        'Category ${value ? 'activated' : 'deactivated'} successfully.',
+      );
+    } else {
+      final error = provider.submitError;
+      AppToast.showError(context, error ?? 'Failed to update category status.');
+    }
   }
 
   void _navigateToAddCategory() {
-    // TODO: Navigate to add category screen
-    Navigator.pushNamed(context, '/categories/add');
+    Navigator.pushNamed(context, '/categories/add').then((_) {
+      if (mounted) context.read<CategoryProvider>().refresh();
+    });
   }
 
   void _navigateToEditCategory(ExpenseCategory category) {
-    // TODO: Navigate to edit category screen
-    Navigator.pushNamed(context, '/categories/edit', arguments: category);
-  }
-
-  Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    // TODO: Fetch categories from API
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+    Navigator.pushNamed(context, '/categories/edit', arguments: category).then((
+      _,
+    ) {
+      if (mounted) context.read<CategoryProvider>().refresh();
+    });
   }
 }
 

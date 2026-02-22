@@ -1,10 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/income.dart';
+import '../../providers/income_provider.dart';
+import '../../services/income_service.dart';
 import '../../widgets/incomes/income_list_item.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
+import '../../utils/formatters.dart';
 
 class IncomeHistoryScreen extends StatefulWidget {
   const IncomeHistoryScreen({super.key});
@@ -14,23 +19,15 @@ class IncomeHistoryScreen extends StatefulWidget {
 }
 
 class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
-  bool _isLoading = false;
+  final IncomeService _incomeService = IncomeService();
 
-  // Sample income data
-  final List<Map<String, dynamic>> _incomes = [
-    {
-      'source': 'Gaji Februari',
-      'amount': 8000000.0,
-      'date': DateTime(2026, 2, 1, 10, 0),
-      'description': 'Gaji bulanan',
-    },
-    {
-      'source': 'Gaji Januari',
-      'amount': 8000000.0,
-      'date': DateTime(2026, 1, 1, 10, 0),
-      'description': 'Gaji bulanan',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<IncomeProvider>().fetchIncomes();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,56 +42,109 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        child: _isLoading
-            ? const LoadingIndicator(message: 'Loading incomes...')
-            : _incomes.isEmpty
-            ? EmptyState(
-                icon: Icons.attach_money,
-                title: 'No Income Yet',
-                message: 'Start by adding your first income',
-                actionLabel: 'Add Income',
-                onAction: _navigateToAddIncome,
-              )
-            : CustomScrollView(
-                slivers: [
-                  // Summary Card
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: AppDimensions.screenPadding,
-                      child: _buildSummaryCard(),
+      body: Consumer<IncomeProvider>(
+        builder: (context, provider, _) {
+          if (provider.isLoading) {
+            return const LoadingIndicator(message: 'Loading incomes...');
+          }
+
+          if (provider.error != null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    provider.error!,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.error,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing16),
-                  ),
-
-                  // Income List
-                  SliverPadding(
-                    padding: AppDimensions.screenPaddingHorizontal,
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final income = _incomes[index];
-                        return IncomeListItem(
-                          source: income['source'],
-                          amount: income['amount'],
-                          date: income['date'],
-                          description: income['description'],
-                          onTap: () {
-                            _showIncomeDetails(income);
-                          },
-                        );
-                      }, childCount: _incomes.length),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing24),
+                  const SizedBox(height: AppDimensions.spacing16),
+                  ElevatedButton(
+                    onPressed: provider.refresh,
+                    child: const Text('Retry'),
                   ),
                 ],
               ),
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Fixed summary card — does not scroll
+              Padding(
+                padding: AppDimensions.screenPadding,
+                child: _buildSummaryCard(provider),
+              ),
+              const SizedBox(height: AppDimensions.spacing16),
+              // Scrollable list
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: provider.refresh,
+                  child: provider.incomes.isEmpty
+                      ? EmptyState(
+                          icon: Icons.attach_money,
+                          title: 'No Income Yet',
+                          message: 'Start by adding your first income',
+                          actionLabel: 'Add Income',
+                          onAction: _navigateToAddIncome,
+                        )
+                      : CustomScrollView(
+                          slivers: [
+                            SliverPadding(
+                              padding: AppDimensions.screenPaddingHorizontal,
+                              sliver: SliverList(
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  final income = provider.incomes[index];
+                                  return IncomeListItem(
+                                    source: income.source,
+                                    amount: income.amount,
+                                    date: income.date,
+                                    description: income.description,
+                                    onTap: () => _showIncomeDetails(income),
+                                  );
+                                }, childCount: provider.incomes.length),
+                              ),
+                            ),
+                            if (provider.isLoadingMore)
+                              const SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: EdgeInsets.all(
+                                    AppDimensions.spacing16,
+                                  ),
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                              ),
+                            if (provider.hasNextPage && !provider.isLoadingMore)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppDimensions.spacing8,
+                                    horizontal: AppDimensions.spacing16,
+                                  ),
+                                  child: TextButton(
+                                    onPressed: provider.fetchNextPage,
+                                    child: const Text('Load more'),
+                                  ),
+                                ),
+                              ),
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: AppDimensions.spacing80),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _navigateToAddIncome,
@@ -105,11 +155,15 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
     );
   }
 
-  Widget _buildSummaryCard() {
-    // Calculate total for current filter
-    double total = _incomes.fold(
-      0,
-      (sum, income) => sum + (income['amount'] as double),
+  Widget _buildSummaryCard(IncomeProvider provider) {
+    final total = provider.incomes.fold<double>(
+      0.0,
+      (sum, income) => sum + income.amount,
+    );
+    final now = DateTime.now();
+    final monthLabel = Formatters.formatMonthYear(
+      provider.month ?? now.month,
+      provider.year ?? now.year,
     );
 
     return Container(
@@ -136,12 +190,12 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
           ),
           const SizedBox(height: AppDimensions.spacing8),
           Text(
-            'Rp ${(total / 1000000).toStringAsFixed(1)}Jt',
+            Formatters.formatCurrencyCompact(total),
             style: AppTypography.amountLarge.copyWith(color: Colors.white),
           ),
           const SizedBox(height: AppDimensions.spacing4),
           Text(
-            'February 2026',
+            monthLabel,
             style: AppTypography.bodySmall.copyWith(
               color: Colors.white.withOpacity(0.8),
             ),
@@ -160,10 +214,8 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
           top: Radius.circular(AppDimensions.radiusXL),
         ),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
           padding: AppDimensions.paddingLG,
           child: SafeArea(
@@ -179,8 +231,9 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
                       borderRadius: AppDimensions.borderRadiusMD,
                     ),
                   ),
-                  onChanged: (value) {
-                    // TODO: Implement search
+                  onSubmitted: (_) {
+                    Navigator.pop(ctx);
+                    context.read<IncomeProvider>().fetchIncomes();
                   },
                 ),
               ],
@@ -191,34 +244,59 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
     );
   }
 
-  void _showIncomeDetails(Map<String, dynamic> income) {
+  void _showIncomeDetails(Income income) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(income['source']),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _DetailRow(label: 'Amount', value: 'Rp ${income['amount']}'),
-            _DetailRow(label: 'Date', value: income['date'].toString()),
-            if (income['description'] != null)
-              _DetailRow(label: 'Description', value: income['description']),
-            const SizedBox(height: AppDimensions.spacing16),
-            Text('Budget Allocations', style: AppTypography.titleSmall),
-            const SizedBox(height: AppDimensions.spacing8),
-            // TODO: Show allocation breakdown
-            Text(
-              'Allocation details will be shown here',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.textMuted,
+      builder: (ctx) => AlertDialog(
+        title: Text(income.source),
+        content: FutureBuilder<IncomeWithAllocations>(
+          future: _incomeService.getIncomeWithAllocations(income.id),
+          builder: (ctx, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 80,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final allocations = snapshot.data?.allocations ?? [];
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DetailRow(
+                    label: 'Amount',
+                    value: Formatters.formatCurrency(income.amount),
+                  ),
+                  _DetailRow(
+                    label: 'Date',
+                    value: Formatters.formatDate(income.date),
+                  ),
+                  if (income.description != null &&
+                      income.description!.isNotEmpty)
+                    _DetailRow(
+                      label: 'Description',
+                      value: income.description!,
+                    ),
+                  if (allocations.isNotEmpty) ...[
+                    const SizedBox(height: AppDimensions.spacing16),
+                    Text('Budget Allocations', style: AppTypography.titleSmall),
+                    const SizedBox(height: AppDimensions.spacing8),
+                    ...allocations.map(
+                      (a) => _DetailRow(
+                        label: a.categoryName,
+                        value: Formatters.formatCurrency(a.allocated),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ),
-          ],
+            );
+          },
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
           ),
         ],
@@ -227,15 +305,9 @@ class _IncomeHistoryScreenState extends State<IncomeHistoryScreen> {
   }
 
   void _navigateToAddIncome() {
-    // TODO: Navigate to add income screen
-    Navigator.pushNamed(context, '/incomes/add');
-  }
-
-  Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    // TODO: Fetch income data from API
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+    Navigator.pushNamed(context, '/incomes/add').then((_) {
+      if (mounted) context.read<IncomeProvider>().refresh();
+    });
   }
 }
 

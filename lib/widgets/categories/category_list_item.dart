@@ -88,7 +88,7 @@ class CategoryListItem extends StatelessWidget {
                   ),
                   const SizedBox(height: AppDimensions.spacing4),
                   Text(
-                    'Priority: ${category.priority}',
+                    'Priority: ${category.priorityLabel}',
                     style: AppTypography.labelSmall.copyWith(
                       color: AppColors.textMuted,
                     ),

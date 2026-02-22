@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../models/income.dart';
 import 'api_client.dart';
 
@@ -8,25 +9,42 @@ class IncomeService {
   IncomeService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   /// Get all incomes with optional filters
-  Future<List<Income>> getIncomes({String? month, int? year}) async {
+  ///
+  /// Query params match backend:
+  /// - month, year: filter by period
+  /// - page, limit: pagination (default: page=1, limit=20)
+  /// - sort: date_asc, date_desc, amount_asc, amount_desc
+  /// - source: partial match filter
+  Future<IncomePaginatedResponse> getIncomes({
+    int? month,
+    int? year,
+    int page = 1,
+    int limit = 20,
+    String sort = 'date_desc',
+    String? source,
+  }) async {
     try {
-      final queryParams = <String, String>{};
-      if (month != null) queryParams['month'] = month;
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'limit': limit.toString(),
+        'sort': sort,
+      };
+      if (month != null) queryParams['month'] = month.toString();
       if (year != null) queryParams['year'] = year.toString();
+      if (source != null && source.isNotEmpty) queryParams['source'] = source;
 
       final response = await _apiClient.get(
         '/incomes',
         queryParams: queryParams,
       );
 
-      final List<dynamic> data = response['data'] ?? [];
-      return data.map((json) => Income.fromJson(json)).toList();
+      return IncomePaginatedResponse.fromJson(response);
     } catch (e) {
       throw Exception('Failed to fetch incomes: ${e.toString()}');
     }
   }
 
-  /// Get income by ID
+  /// Get income by ID (includes allocations in response)
   Future<Income> getIncomeById(String id) async {
     try {
       final response = await _apiClient.get('/incomes/$id');
@@ -36,40 +54,72 @@ class IncomeService {
     }
   }
 
-  /// Get income with allocation details
+  /// Get income detail with allocation breakdown
+  /// Backend returns allocations embedded in the detail response
   Future<IncomeWithAllocations> getIncomeWithAllocations(String id) async {
     try {
-      final response = await _apiClient.get('/incomes/$id/allocations');
+      final response = await _apiClient.get('/incomes/$id');
       return IncomeWithAllocations.fromJson(response['data']);
     } catch (e) {
-      throw Exception('Failed to fetch income allocations: ${e.toString()}');
+      throw Exception(
+        'Failed to fetch income with allocations: ${e.toString()}',
+      );
     }
   }
 
   /// Create new income
-  Future<Income> createIncome({
+  /// Returns income + auto-allocation breakdown
+  Future<IncomeWithAllocations> createIncome({
     required String source,
     required double amount,
     required DateTime date,
     String? description,
   }) async {
     try {
-      final body = {
+      final body = <String, dynamic>{
         'source': source,
         'amount': amount,
-        'date': date.toIso8601String(),
-        if (description != null) 'description': description,
+        'date': date.toUtc().toIso8601String(),
       };
+      if (description != null && description.isNotEmpty) {
+        body['description'] = description;
+      }
 
       final response = await _apiClient.post('/incomes', body: body);
-      return Income.fromJson(response['data']);
+      debugPrint('[IncomeService] createIncome response: $response');
+
+      // Backend may return { data: { income: {...}, allocations: [...] } }
+      // or { data: { id, source, amount, ..., allocations: [...] } } (income flat in data)
+      final data = response['data'] as Map<String, dynamic>?;
+      if (data == null) {
+        throw Exception('Unexpected response: missing data field');
+      }
+
+      // If data has an 'income' key, it's the nested shape
+      if (data.containsKey('income')) {
+        return IncomeWithAllocations.fromJson(data);
+      }
+
+      // Otherwise data IS the income object, allocations may be a sibling or inside data
+      final allocationsRaw =
+          data['allocations'] as List? ??
+          response['allocations'] as List? ??
+          [];
+      return IncomeWithAllocations(
+        income: Income.fromJson(data),
+        allocations: allocationsRaw
+            .map((e) => AllocationBreakdown.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
     } catch (e) {
+      debugPrint('[IncomeService] createIncome error: $e');
       throw Exception('Failed to create income: ${e.toString()}');
     }
   }
 
-  /// Update income
-  Future<Income> updateIncome({
+  /// Update income — uses PATCH (not PUT)
+  /// Server will re-calculate allocations if amount changes
+  Future<IncomeWithAllocations> updateIncome({
     required String id,
     String? source,
     double? amount,
@@ -80,40 +130,22 @@ class IncomeService {
       final body = <String, dynamic>{};
       if (source != null) body['source'] = source;
       if (amount != null) body['amount'] = amount;
-      if (date != null) body['date'] = date.toIso8601String();
+      if (date != null) body['date'] = date.toUtc().toIso8601String();
       if (description != null) body['description'] = description;
 
-      final response = await _apiClient.put('/incomes/$id', body: body);
-      return Income.fromJson(response['data']);
+      final response = await _apiClient.patch('/incomes/$id', body: body);
+      return IncomeWithAllocations.fromJson(response['data']);
     } catch (e) {
       throw Exception('Failed to update income: ${e.toString()}');
     }
   }
 
-  /// Delete income
+  /// Delete income — soft delete + rollback allocations
   Future<void> deleteIncome(String id) async {
     try {
       await _apiClient.delete('/incomes/$id');
     } catch (e) {
       throw Exception('Failed to delete income: ${e.toString()}');
-    }
-  }
-
-  /// Get total income for period
-  Future<double> getTotalIncome({String? month, int? year}) async {
-    try {
-      final queryParams = <String, String>{};
-      if (month != null) queryParams['month'] = month;
-      if (year != null) queryParams['year'] = year.toString();
-
-      final response = await _apiClient.get(
-        '/incomes/total',
-        queryParams: queryParams,
-      );
-
-      return (response['data']['total'] as num).toDouble();
-    } catch (e) {
-      throw Exception('Failed to fetch total income: ${e.toString()}');
     }
   }
 }

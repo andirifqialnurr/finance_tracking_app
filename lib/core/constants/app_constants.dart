@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 /// App-wide Constants
 class AppConstants {
   AppConstants._();
@@ -8,7 +11,16 @@ class AppConstants {
   static const String appDescription = 'Personal Finance Tracking App';
 
   // API Configuration
-  static const String apiBaseUrl = 'http://localhost:8080/api/v1';
+  // Android emulator routes localhost → 10.0.2.2 (host machine).
+  // Web and iOS simulator use localhost directly.
+  static String get apiBaseUrl {
+    const port = '8081';
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:$port/api/v1';
+    }
+    return 'http://localhost:$port/api/v1';
+  }
+
   static const Duration apiTimeout = Duration(seconds: 30);
 
   // Date Formats

@@ -1,10 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/expense.dart';
+import '../../providers/expense_provider.dart';
+import '../../providers/category_provider.dart';
 import '../../widgets/expenses/expense_list_item.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
+import '../../utils/formatters.dart';
 
 class ExpenseHistoryScreen extends StatefulWidget {
   const ExpenseHistoryScreen({super.key});
@@ -14,36 +19,16 @@ class ExpenseHistoryScreen extends StatefulWidget {
 }
 
 class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
-  bool _isLoading = false;
-  String? _selectedCategoryFilter;
+  String? _selectedCategoryId;
 
-  // Sample expense data
-  final List<Map<String, dynamic>> _expenses = [
-    {
-      'category': 'Makan',
-      'amount': 40000.0,
-      'date': DateTime(2026, 2, 18, 12, 30),
-      'description': 'Makan siang Warteg',
-    },
-    {
-      'category': 'Bensin',
-      'amount': 35000.0,
-      'date': DateTime(2026, 2, 17, 8, 15),
-      'description': 'Isi bensin Shell',
-    },
-    {
-      'category': 'Makan',
-      'amount': 45000.0,
-      'date': DateTime(2026, 2, 16, 19, 0),
-      'description': 'Makan malam',
-    },
-    {
-      'category': 'Netflix',
-      'amount': 120000.0,
-      'date': DateTime(2026, 2, 15, 10, 0),
-      'description': 'Netflix Premium subscription',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ExpenseProvider>().fetchExpenses();
+      context.read<CategoryProvider>().fetchCategories();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,65 +47,120 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        child: _isLoading
-            ? const LoadingIndicator(message: 'Loading expenses...')
-            : _expenses.isEmpty
-            ? EmptyState(
-                icon: Icons.receipt_long_outlined,
-                title: 'No Expenses Yet',
-                message: 'Start tracking your expenses to see them here',
-                actionLabel: 'Add Expense',
-                onAction: _navigateToAddExpense,
-              )
-            : CustomScrollView(
-                slivers: [
-                  // Filter Chips
-                  if (_selectedCategoryFilter != null)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: AppDimensions.screenPadding,
-                        child: _buildFilterChip(),
-                      ),
+      body: Consumer<ExpenseProvider>(
+        builder: (context, provider, _) {
+          if (provider.isLoading) {
+            return const LoadingIndicator(message: 'Loading expenses...');
+          }
+
+          if (provider.error != null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    provider.error!,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.error,
                     ),
-
-                  // Summary Card
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: AppDimensions.screenPadding,
-                      child: _buildSummaryCard(),
-                    ),
+                    textAlign: TextAlign.center,
                   ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing16),
-                  ),
-
-                  // Expense List
-                  SliverPadding(
-                    padding: AppDimensions.screenPaddingHorizontal,
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final expense = _expenses[index];
-                        return ExpenseListItem(
-                          categoryName: expense['category'],
-                          amount: expense['amount'],
-                          date: expense['date'],
-                          description: expense['description'],
-                          onTap: () {
-                            _showExpenseDetails(expense);
-                          },
-                        );
-                      }, childCount: _expenses.length),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimensions.spacing24),
+                  const SizedBox(height: AppDimensions.spacing16),
+                  ElevatedButton(
+                    onPressed: provider.refresh,
+                    child: const Text('Retry'),
                   ),
                 ],
               ),
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Fixed header — does not scroll
+              if (_selectedCategoryId != null)
+                Padding(
+                  padding: AppDimensions.screenPadding,
+                  child: _buildFilterChip(context),
+                ),
+              Padding(
+                padding: AppDimensions.screenPadding,
+                child: _buildSummaryCard(provider),
+              ),
+              const SizedBox(height: AppDimensions.spacing16),
+              // Scrollable list
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: provider.refresh,
+                  child: provider.expenses.isEmpty
+                      ? EmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'No Expenses Yet',
+                          message:
+                              'Start tracking your expenses to see them here',
+                          actionLabel: 'Add Expense',
+                          onAction: _navigateToAddExpense,
+                        )
+                      : CustomScrollView(
+                          slivers: [
+                            SliverPadding(
+                              padding: AppDimensions.screenPaddingHorizontal,
+                              sliver: SliverList(
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  final expense = provider.expenses[index];
+                                  final categoryName = _getCategoryName(
+                                    context,
+                                    expense.categoryId,
+                                  );
+                                  return ExpenseListItem(
+                                    categoryName: categoryName,
+                                    amount: expense.amount,
+                                    date: expense.date,
+                                    description: expense.description,
+                                    onTap: () =>
+                                        _showExpenseDetails(context, expense),
+                                  );
+                                }, childCount: provider.expenses.length),
+                              ),
+                            ),
+                            if (provider.isLoadingMore)
+                              const SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: EdgeInsets.all(
+                                    AppDimensions.spacing16,
+                                  ),
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                              ),
+                            if (provider.hasNextPage && !provider.isLoadingMore)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppDimensions.spacing8,
+                                    horizontal: AppDimensions.spacing16,
+                                  ),
+                                  child: TextButton(
+                                    onPressed: provider.fetchNextPage,
+                                    child: const Text('Load more'),
+                                  ),
+                                ),
+                              ),
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: AppDimensions.spacing80),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _navigateToAddExpense,
@@ -131,13 +171,22 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     );
   }
 
-  Widget _buildFilterChip() {
+  String _getCategoryName(BuildContext context, String categoryId) {
+    final categories = context.read<CategoryProvider>().categories;
+    final match = categories.where((c) => c.id == categoryId).firstOrNull;
+    return match?.name ?? categoryId;
+  }
+
+  Widget _buildFilterChip(BuildContext context) {
+    final categories = context.read<CategoryProvider>().categories;
+    final match = categories
+        .where((c) => c.id == _selectedCategoryId)
+        .firstOrNull;
     return Chip(
-      label: Text(_selectedCategoryFilter!),
+      label: Text(match?.name ?? _selectedCategoryId ?? ''),
       onDeleted: () {
-        setState(() {
-          _selectedCategoryFilter = null;
-        });
+        setState(() => _selectedCategoryId = null);
+        context.read<ExpenseProvider>().fetchExpenses();
       },
       deleteIcon: const Icon(Icons.close, size: 18),
       backgroundColor: AppColors.primary.withOpacity(0.1),
@@ -145,11 +194,14 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     );
   }
 
-  Widget _buildSummaryCard() {
-    // Calculate total for current filter
-    double total = _expenses.fold(
-      0,
-      (sum, expense) => sum + (expense['amount'] as double),
+  Widget _buildSummaryCard(ExpenseProvider provider) {
+    final total =
+        provider.summary?.totalAmount ??
+        provider.expenses.fold<double>(0.0, (s, e) => s + e.amount);
+    final now = DateTime.now();
+    final monthLabel = Formatters.formatMonthYear(
+      provider.month ?? now.month,
+      provider.year ?? now.year,
     );
 
     return Container(
@@ -176,12 +228,12 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           ),
           const SizedBox(height: AppDimensions.spacing8),
           Text(
-            'Rp ${(total / 1000).toStringAsFixed(0)}K',
+            Formatters.formatCurrencyCompact(total),
             style: AppTypography.amountLarge.copyWith(color: Colors.white),
           ),
           const SizedBox(height: AppDimensions.spacing4),
           Text(
-            'February 2026',
+            monthLabel,
             style: AppTypography.bodySmall.copyWith(
               color: Colors.white.withOpacity(0.8),
             ),
@@ -192,6 +244,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   }
 
   void _showFilterSheet() {
+    final categories = context.read<CategoryProvider>().categories;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -199,7 +252,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           top: Radius.circular(AppDimensions.radiusXL),
         ),
       ),
-      builder: (context) => Container(
+      builder: (ctx) => Container(
         padding: AppDimensions.paddingLG,
         child: SafeArea(
           child: Column(
@@ -208,37 +261,32 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
             children: [
               Text('Filter by Category', style: AppTypography.titleMedium),
               const SizedBox(height: AppDimensions.spacing16),
-              _CategoryFilterOption(
-                title: 'All Categories',
-                isSelected: _selectedCategoryFilter == null,
+              ListTile(
+                title: const Text('All Categories'),
+                trailing: _selectedCategoryId == null
+                    ? const Icon(Icons.check, color: AppColors.primary)
+                    : null,
                 onTap: () {
-                  setState(() {
-                    _selectedCategoryFilter = null;
-                  });
-                  Navigator.pop(context);
+                  setState(() => _selectedCategoryId = null);
+                  context.read<ExpenseProvider>().fetchExpenses();
+                  Navigator.pop(ctx);
                 },
               ),
-              _CategoryFilterOption(
-                title: 'Makan',
-                isSelected: _selectedCategoryFilter == 'Makan',
-                onTap: () {
-                  setState(() {
-                    _selectedCategoryFilter = 'Makan';
-                  });
-                  Navigator.pop(context);
-                },
+              ...categories.map(
+                (cat) => ListTile(
+                  title: Text(cat.name),
+                  trailing: _selectedCategoryId == cat.id
+                      ? const Icon(Icons.check, color: AppColors.primary)
+                      : null,
+                  onTap: () {
+                    setState(() => _selectedCategoryId = cat.id);
+                    context.read<ExpenseProvider>().fetchExpenses(
+                      categoryId: cat.id,
+                    );
+                    Navigator.pop(ctx);
+                  },
+                ),
               ),
-              _CategoryFilterOption(
-                title: 'Bensin',
-                isSelected: _selectedCategoryFilter == 'Bensin',
-                onTap: () {
-                  setState(() {
-                    _selectedCategoryFilter = 'Bensin';
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              // TODO: Load categories from API
             ],
           ),
         ),
@@ -255,10 +303,8 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           top: Radius.circular(AppDimensions.radiusXL),
         ),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
           padding: AppDimensions.paddingLG,
           child: SafeArea(
@@ -274,8 +320,9 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                       borderRadius: AppDimensions.borderRadiusMD,
                     ),
                   ),
-                  onChanged: (value) {
-                    // TODO: Implement search
+                  onSubmitted: (_) {
+                    Navigator.pop(ctx);
+                    context.read<ExpenseProvider>().fetchExpenses();
                   },
                 ),
               ],
@@ -286,24 +333,31 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     );
   }
 
-  void _showExpenseDetails(Map<String, dynamic> expense) {
+  void _showExpenseDetails(BuildContext context, Expense expense) {
+    final categoryName = _getCategoryName(context, expense.categoryId);
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(expense['category']),
+      builder: (ctx) => AlertDialog(
+        title: Text(categoryName),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DetailRow(label: 'Amount', value: 'Rp ${expense['amount']}'),
-            _DetailRow(label: 'Date', value: expense['date'].toString()),
-            if (expense['description'] != null)
-              _DetailRow(label: 'Description', value: expense['description']),
+            _DetailRow(
+              label: 'Amount',
+              value: Formatters.formatCurrency(expense.amount),
+            ),
+            _DetailRow(
+              label: 'Date',
+              value: Formatters.formatDate(expense.date),
+            ),
+            if (expense.description != null && expense.description!.isNotEmpty)
+              _DetailRow(label: 'Description', value: expense.description!),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
           ),
         ],
@@ -312,38 +366,9 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   }
 
   void _navigateToAddExpense() {
-    // TODO: Navigate to add expense screen
-    Navigator.pushNamed(context, '/expenses/add');
-  }
-
-  Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    // TODO: Fetch expense data from API
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
-  }
-}
-
-class _CategoryFilterOption extends StatelessWidget {
-  final String title;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _CategoryFilterOption({
-    required this.title,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(title),
-      trailing: isSelected
-          ? const Icon(Icons.check, color: AppColors.primary)
-          : null,
-      onTap: onTap,
-    );
+    Navigator.pushNamed(context, '/expenses/add').then((_) {
+      if (mounted) context.read<ExpenseProvider>().refresh();
+    });
   }
 }
 

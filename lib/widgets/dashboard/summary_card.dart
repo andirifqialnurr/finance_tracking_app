@@ -75,7 +75,7 @@ class SummaryCard extends StatelessWidget {
               ),
             ),
             Text(
-              Formatters.formatCurrency(amount),
+              Formatters.formatCurrencyCompact(amount),
               style: AppTypography.amountMedium,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -155,7 +155,7 @@ class SummaryCardGradient extends StatelessWidget {
               ),
             ),
             Text(
-              Formatters.formatCurrency(amount),
+              Formatters.formatCurrencyCompact(amount),
               style: AppTypography.amountMedium.copyWith(color: Colors.white),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
