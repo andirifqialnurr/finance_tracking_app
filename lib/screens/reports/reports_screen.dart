@@ -1,44 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
+import '../../models/report.dart';
 import '../../providers/report_provider.dart';
 import '../../utils/app_toast.dart';
 import '../../widgets/common/app_button.dart';
 
-class ReportsScreen extends StatefulWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
   @override
-  State<ReportsScreen> createState() => _ReportsScreenState();
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen> {
-  DateTime _selectedMonthForMonthly = DateTime(2026, 2);
-  int _selectedYearForYearly = 2026;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadMonthlyReport();
-      _loadYearlyReport();
-    });
-  }
-
-  void _loadMonthlyReport() {
-    context.read<ReportProvider>().fetchMonthlyReport(
-      month: _selectedMonthForMonthly.month,
-      year: _selectedMonthForMonthly.year,
-    );
-  }
-
-  void _loadYearlyReport() {
-    context.read<ReportProvider>().fetchYearlyReport(
-      year: _selectedYearForYearly,
-    );
-  }
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+  DateTime _selectedMonthForMonthly = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  int _selectedYearForYearly = DateTime.now().year;
 
   @override
   Widget build(BuildContext context) {
@@ -48,11 +30,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         backgroundColor: AppColors.background,
         appBar: AppBar(
           title: const Text('Reports'),
-          bottom: TabBar(
+          bottom: const TabBar(
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.primary,
-            tabs: const [
+            tabs: [
               Tab(text: 'Monthly Report'),
               Tab(text: 'Yearly Report'),
             ],
@@ -67,54 +49,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // MARK: - Monthly Report Tab
   Widget _buildMonthlyReportTab() {
-    return Consumer<ReportProvider>(
-      builder: (context, provider, child) {
-        return SingleChildScrollView(
-          padding: AppDimensions.screenPadding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppDimensions.spacing16),
+    final monthlyAsync = ref.watch(
+      monthlyReportProvider(
+        _selectedMonthForMonthly.month,
+        _selectedMonthForMonthly.year,
+      ),
+    );
+    final isExporting = ref.watch(reportExportNotifierProvider).isLoading;
 
-              // Month Selector
-              _buildMonthSelector(),
-              const SizedBox(height: AppDimensions.spacing24),
-
-              // Loading State
-              if (provider.isLoadingMonthlyReport)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(AppDimensions.spacing32),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              // Error State
-              else if (provider.monthlyReportError != null)
-                _buildErrorState(
-                  message: provider.monthlyReportError!,
-                  onRetry: _loadMonthlyReport,
-                )
-              // Empty State
-              else if (provider.monthlyReport == null)
-                _buildEmptyState('No monthly report data available')
-              // Data State
-              else ...[
-                // Report Summary
-                _buildMonthlyReportSummary(provider.monthlyReport!),
-                const SizedBox(height: AppDimensions.spacing24),
-
-                // Category Breakdown
-                _buildCategoryBreakdown(provider.monthlyReport!),
-                const SizedBox(height: AppDimensions.spacing24),
-
-                // Export Buttons
-                _buildExportButtons(isMonthly: true, provider: provider),
-                const SizedBox(height: AppDimensions.spacing32),
-              ],
-            ],
-          ),
-        );
-      },
+    return SingleChildScrollView(
+      padding: AppDimensions.screenPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: AppDimensions.spacing16),
+          _buildMonthSelector(),
+          const SizedBox(height: AppDimensions.spacing24),
+          if (monthlyAsync.isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(AppDimensions.spacing32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (monthlyAsync.hasError)
+            _buildErrorState(
+              message: monthlyAsync.error.toString(),
+              onRetry: () => ref.invalidate(monthlyReportProvider),
+            )
+          else if (monthlyAsync.valueOrNull == null)
+            _buildEmptyState('No monthly report data available')
+          else ...[
+            _buildMonthlyReportSummary(monthlyAsync.value!),
+            const SizedBox(height: AppDimensions.spacing24),
+            _buildCategoryBreakdown(monthlyAsync.value!),
+            const SizedBox(height: AppDimensions.spacing24),
+            _buildMonthlyExportButtons(isExporting: isExporting),
+            const SizedBox(height: AppDimensions.spacing32),
+          ],
+        ],
+      ),
     );
   }
 
@@ -132,7 +106,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           setState(() {
             _selectedMonthForMonthly = picked;
           });
-          _loadMonthlyReport();
         }
       },
       child: Container(
@@ -151,28 +124,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
+            const Icon(
+              Icons.calendar_today,
+              color: AppColors.primary,
+              size: 20,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMonthlyReportSummary(monthlyReport) {
+  Widget _buildMonthlyReportSummary(MonthlyReport monthlyReport) {
     final savings = monthlyReport.totalIncome - monthlyReport.totalSpent;
 
     return Container(
       padding: AppDimensions.paddingLG,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+          colors: [AppColors.primary, AppColors.primary.withValues(alpha: 0.8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: AppDimensions.borderRadiusLG,
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
+            color: AppColors.primary.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -189,47 +166,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
           const SizedBox(height: AppDimensions.spacing16),
-
-          // Income
           _buildSummaryRow(
             'Total Income',
             'Rp${(monthlyReport.totalIncome / 1000000).toStringAsFixed(1)}M',
             Icons.trending_up,
           ),
           const SizedBox(height: AppDimensions.spacing12),
-
-          // Spent
           _buildSummaryRow(
             'Total Spent',
             'Rp${(monthlyReport.totalSpent / 1000000).toStringAsFixed(2)}M',
             Icons.shopping_cart,
           ),
           const SizedBox(height: AppDimensions.spacing12),
-
-          // Budget
           _buildSummaryRow(
             'Budget Allocated',
             'Rp${(monthlyReport.totalBudget / 1000000).toStringAsFixed(1)}M',
             Icons.account_balance_wallet,
           ),
           const SizedBox(height: AppDimensions.spacing12),
-
-          // Savings
           _buildSummaryRow(
             'Savings',
             'Rp${(savings / 1000000).toStringAsFixed(2)}M',
             Icons.savings,
             valueColor: Colors.greenAccent,
           ),
-
           const SizedBox(height: AppDimensions.spacing16),
           const Divider(color: Colors.white24),
           const SizedBox(height: AppDimensions.spacing12),
-
-          // Top Category
           Row(
             children: [
-              Icon(Icons.stars, color: Colors.amberAccent, size: 20),
+              const Icon(Icons.stars, color: Colors.amberAccent, size: 20),
               const SizedBox(width: AppDimensions.spacing8),
               Expanded(
                 child: Column(
@@ -285,7 +251,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildCategoryBreakdown(monthlyReport) {
+  Widget _buildCategoryBreakdown(MonthlyReport monthlyReport) {
     final categories = monthlyReport.categories;
 
     return Column(
@@ -328,20 +294,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ],
                 ),
                 const SizedBox(height: AppDimensions.spacing8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Rp${(cat.spent / 1000).toStringAsFixed(0)}K / Rp${(cat.budget / 1000).toStringAsFixed(0)}K',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Rp${(cat.spent / 1000).toStringAsFixed(0)}K / Rp${(cat.budget / 1000).toStringAsFixed(0)}K',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: AppDimensions.spacing8),
                 LinearProgressIndicator(
-                  value: percentage / 100 > 1 ? 1 : percentage / 100,
+                  value: (percentage / 100).clamp(0.0, 1.0),
                   backgroundColor: AppColors.background,
                   color: percentage > 100 ? AppColors.error : AppColors.primary,
                 ),
@@ -353,10 +314,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildExportButtons({
-    required bool isMonthly,
-    required ReportProvider provider,
-  }) {
+  Widget _buildMonthlyExportButtons({required bool isExporting}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -367,24 +325,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Expanded(
               child: AppButton(
                 text: 'Export as PDF',
-                onPressed: provider.isExporting
+                onPressed: isExporting
                     ? null
-                    : () => _exportReport(isMonthly, 'pdf'),
+                    : () => _exportMonthlyReport('pdf'),
                 icon: Icons.picture_as_pdf,
                 variant: AppButtonVariant.secondary,
-                isLoading: provider.isExporting,
+                isLoading: isExporting,
               ),
             ),
             const SizedBox(width: AppDimensions.spacing12),
             Expanded(
               child: AppButton(
                 text: 'Export as Excel',
-                onPressed: provider.isExporting
+                onPressed: isExporting
                     ? null
-                    : () => _exportReport(isMonthly, 'excel'),
+                    : () => _exportMonthlyReport('excel'),
                 icon: Icons.table_chart,
                 variant: AppButtonVariant.secondary,
-                isLoading: provider.isExporting,
+                isLoading: isExporting,
               ),
             ),
           ],
@@ -395,61 +353,44 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // MARK: - Yearly Report Tab
   Widget _buildYearlyReportTab() {
-    return Consumer<ReportProvider>(
-      builder: (context, provider, child) {
-        return SingleChildScrollView(
-          padding: AppDimensions.screenPadding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppDimensions.spacing16),
+    final yearlyAsync = ref.watch(yearlyReportProvider(_selectedYearForYearly));
 
-              // Year Selector
-              _buildYearSelector(),
-              const SizedBox(height: AppDimensions.spacing24),
-
-              // Loading State
-              if (provider.isLoadingYearlyReport)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(AppDimensions.spacing32),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              // Error State
-              else if (provider.yearlyReportError != null)
-                _buildErrorState(
-                  message: provider.yearlyReportError!,
-                  onRetry: _loadYearlyReport,
-                )
-              // Empty State
-              else if (provider.yearlyReport == null)
-                _buildEmptyState('No yearly report data available')
-              // Data State
-              else ...[
-                // Yearly Summary
-                _buildYearlySummary(provider.yearlyReport!),
-                const SizedBox(height: AppDimensions.spacing24),
-
-                // Monthly Breakdown
-                _buildMonthlyBreakdown(provider.yearlyReport!),
-                const SizedBox(height: AppDimensions.spacing24),
-
-                // Export Buttons
-                _buildExportButtons(isMonthly: false, provider: provider),
-                const SizedBox(height: AppDimensions.spacing32),
-              ],
-            ],
-          ),
-        );
-      },
+    return SingleChildScrollView(
+      padding: AppDimensions.screenPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: AppDimensions.spacing16),
+          _buildYearSelector(),
+          const SizedBox(height: AppDimensions.spacing24),
+          if (yearlyAsync.isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(AppDimensions.spacing32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (yearlyAsync.hasError)
+            _buildErrorState(
+              message: yearlyAsync.error.toString(),
+              onRetry: () => ref.invalidate(yearlyReportProvider),
+            )
+          else if (yearlyAsync.valueOrNull == null)
+            _buildEmptyState('No yearly report data available')
+          else ...[
+            _buildYearlySummary(yearlyAsync.value!),
+            const SizedBox(height: AppDimensions.spacing24),
+            _buildMonthlyBreakdown(yearlyAsync.value!),
+            const SizedBox(height: AppDimensions.spacing32),
+          ],
+        ],
+      ),
     );
   }
 
   Widget _buildYearSelector() {
     return GestureDetector(
       onTap: () async {
-        // Show year picker
         final int? picked = await showDialog<int>(
           context: context,
           builder: (context) =>
@@ -459,7 +400,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           setState(() {
             _selectedYearForYearly = picked;
           });
-          _loadYearlyReport();
         }
       },
       child: Container(
@@ -478,19 +418,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
+            const Icon(
+              Icons.calendar_today,
+              color: AppColors.primary,
+              size: 20,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildYearlySummary(yearlyReport) {
+  Widget _buildYearlySummary(YearlyReport yearlyReport) {
     return Container(
       padding: AppDimensions.paddingLG,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.primary.withOpacity(0.7)],
+          colors: [AppColors.primary, AppColors.primary.withValues(alpha: 0.7)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -507,39 +451,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
           const SizedBox(height: AppDimensions.spacing16),
-
           _buildSummaryRow(
             'Total Income',
             'Rp${(yearlyReport.totalIncome / 1000000).toStringAsFixed(1)}M',
             Icons.trending_up,
           ),
           const SizedBox(height: AppDimensions.spacing12),
-
           _buildSummaryRow(
             'Total Spent',
             'Rp${(yearlyReport.totalSpent / 1000000).toStringAsFixed(2)}M',
             Icons.shopping_cart,
           ),
           const SizedBox(height: AppDimensions.spacing12),
-
           _buildSummaryRow(
             'Avg Monthly Income',
             'Rp${(yearlyReport.averageMonthlyIncome / 1000000).toStringAsFixed(1)}M',
             Icons.calendar_month,
           ),
           const SizedBox(height: AppDimensions.spacing12),
-
           _buildSummaryRow(
             'Avg Monthly Spending',
             'Rp${(yearlyReport.averageMonthlySpending / 1000000).toStringAsFixed(2)}M',
             Icons.shopping_bag,
           ),
-
           const SizedBox(height: AppDimensions.spacing16),
           const Divider(color: Colors.white24),
           const SizedBox(height: AppDimensions.spacing12),
-
-          // Highest/Lowest months
           Row(
             children: [
               Expanded(
@@ -575,7 +512,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: AppDimensions.paddingSM,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: AppDimensions.borderRadiusMD,
       ),
       child: Column(
@@ -598,7 +535,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildMonthlyBreakdown(yearlyReport) {
+  Widget _buildMonthlyBreakdown(YearlyReport yearlyReport) {
     final monthlySummaries = yearlyReport.monthlySummaries;
 
     return Column(
@@ -607,10 +544,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Text('Monthly Breakdown', style: AppTypography.titleMedium),
         const SizedBox(height: AppDimensions.spacing12),
         ...monthlySummaries.map((month) {
-          final income = month.income;
-          final spent = month.spent;
-          final remaining = month.remaining;
-
           return Container(
             margin: const EdgeInsets.only(bottom: AppDimensions.spacing12),
             padding: AppDimensions.paddingMD,
@@ -642,7 +575,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                         ),
                         Text(
-                          'Rp${(income / 1000000).toStringAsFixed(1)}M',
+                          'Rp${(month.income / 1000000).toStringAsFixed(1)}M',
                           style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.success,
                             fontWeight: FontWeight.w600,
@@ -660,7 +593,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                         ),
                         Text(
-                          'Rp${(spent / 1000000).toStringAsFixed(2)}M',
+                          'Rp${(month.spent / 1000000).toStringAsFixed(2)}M',
                           style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.error,
                             fontWeight: FontWeight.w600,
@@ -678,7 +611,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                         ),
                         Text(
-                          'Rp${(remaining / 1000000).toStringAsFixed(2)}M',
+                          'Rp${(month.remaining / 1000000).toStringAsFixed(2)}M',
                           style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w600,
@@ -715,54 +648,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return '${months[date.month - 1]} ${date.year}';
   }
 
-  Future<void> _exportReport(bool isMonthly, String format) async {
-    final provider = context.read<ReportProvider>();
-
+  Future<void> _exportMonthlyReport(String format) async {
     try {
-      String? filePath;
-
-      if (isMonthly) {
-        if (format == 'pdf') {
-          filePath = await provider.exportMonthlyReportPDF(
-            month: _selectedMonthForMonthly.month,
-            year: _selectedMonthForMonthly.year,
+      await ref
+          .read(reportExportNotifierProvider.notifier)
+          .exportMonthly(
+            _selectedMonthForMonthly.month,
+            _selectedMonthForMonthly.year,
+            format,
           );
-        } else {
-          filePath = await provider.exportMonthlyReportExcel(
-            month: _selectedMonthForMonthly.month,
-            year: _selectedMonthForMonthly.year,
-          );
-        }
-      } else {
-        if (format == 'pdf') {
-          filePath = await provider.exportYearlyReportPDF(
-            year: _selectedYearForYearly,
-          );
-        } else {
-          filePath = await provider.exportYearlyReportExcel(
-            year: _selectedYearForYearly,
-          );
-        }
-      }
-
       if (!mounted) return;
-
-      // Show success or error message
-      if (provider.exportSuccess != null) {
-        AppToast.showSuccess(context, provider.exportSuccess!);
-      } else if (provider.exportError != null) {
-        AppToast.showError(
-          context,
-          'Failed to export report. Please try again.',
-        );
-      }
+      AppToast.showSuccess(
+        context,
+        'Report exported successfully as ${format.toUpperCase()}.',
+      );
     } catch (e) {
-      if (mounted) {
-        AppToast.showError(
-          context,
-          'Failed to export report. Please try again.',
-        );
-      }
+      if (!mounted) return;
+      AppToast.showError(context, e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -776,7 +678,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: AppColors.error),
+            const Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: AppDimensions.spacing16),
             Text(
               'Error',
@@ -803,7 +705,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.inbox_outlined,
               size: 64,
               color: AppColors.textSecondary,

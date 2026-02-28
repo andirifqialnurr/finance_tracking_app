@@ -45,7 +45,7 @@ class ExpenseListItem extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: (categoryColor ?? AppColors.error).withOpacity(0.1),
+                color: (categoryColor ?? AppColors.error).withValues(alpha: 0.1),
                 borderRadius: AppDimensions.borderRadiusMD,
               ),
               child: Icon(

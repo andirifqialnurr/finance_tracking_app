@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
@@ -10,121 +11,113 @@ import '../../widgets/categories/category_list_item.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
 
-class CategoryManagementScreen extends StatefulWidget {
+class CategoryManagementScreen extends ConsumerStatefulWidget {
   const CategoryManagementScreen({super.key});
 
   @override
-  State<CategoryManagementScreen> createState() =>
+  ConsumerState<CategoryManagementScreen> createState() =>
       _CategoryManagementScreenState();
 }
 
-class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
+class _CategoryManagementScreenState
+    extends ConsumerState<CategoryManagementScreen> {
   bool _showInactive = true;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CategoryProvider>().fetchCategories();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Consumer<CategoryProvider>(
-      builder: (context, provider, _) {
-        final filteredCategories = _showInactive
-            ? provider.categories
-            : provider.categories.where((c) => c.isActive).toList();
+    final categoriesAsync = ref.watch(categoriesProvider);
+    final categories = categoriesAsync.valueOrNull ?? [];
+    final filteredCategories = _showInactive
+        ? categories
+        : categories.where((c) => c.isActive).toList();
+    final activeCount = categories.where((c) => c.isActive).length;
+    final totalBudget = categories
+        .where((c) => c.isActive)
+        .fold<double>(0, (sum, c) => sum + c.monthlyBudget);
 
-        return Scaffold(
-          backgroundColor: AppColors.background,
-          appBar: AppBar(
-            title: const Text('Manage Categories'),
-            actions: [
-              IconButton(
-                icon: Icon(
-                  _showInactive
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _showInactive = !_showInactive;
-                  });
-                },
-                tooltip: _showInactive ? 'Hide Inactive' : 'Show Inactive',
-              ),
-            ],
-          ),
-          body: provider.isLoading
-              ? const LoadingIndicator(message: 'Loading categories...')
-              : provider.error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        provider.error!,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.error,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: AppDimensions.spacing16),
-                      ElevatedButton(
-                        onPressed: provider.refresh,
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
-              : filteredCategories.isEmpty
-              ? EmptyState(
-                  icon: Icons.category_outlined,
-                  title: 'No Categories',
-                  message: 'Start by creating your first expense category',
-                  actionLabel: 'Add Category',
-                  onAction: _navigateToAddCategory,
-                )
-              : RefreshIndicator(
-                  onRefresh: provider.refresh,
-                  child: CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: AppDimensions.screenPadding,
-                          child: _buildSummaryCard(provider),
-                        ),
-                      ),
-                      const SliverToBoxAdapter(
-                        child: SizedBox(height: AppDimensions.spacing16),
-                      ),
-                      ..._buildCategoriesByType(filteredCategories),
-                      const SliverToBoxAdapter(
-                        child: SizedBox(height: AppDimensions.spacing80),
-                      ),
-                    ],
-                  ),
-                ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: _navigateToAddCategory,
-            backgroundColor: AppColors.primary,
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Add Category',
-              style: TextStyle(color: Colors.white),
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Manage Categories'),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _showInactive
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
             ),
+            onPressed: () {
+              setState(() {
+                _showInactive = !_showInactive;
+              });
+            },
+            tooltip: _showInactive ? 'Hide Inactive' : 'Show Inactive',
           ),
-        );
-      },
+        ],
+      ),
+      body: categoriesAsync.isLoading
+          ? const LoadingIndicator(message: 'Loading categories...')
+          : categoriesAsync.hasError
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    categoriesAsync.error.toString(),
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppDimensions.spacing16),
+                  ElevatedButton(
+                    onPressed: () => ref.invalidate(categoriesProvider),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
+          : filteredCategories.isEmpty
+          ? EmptyState(
+              icon: Icons.category_outlined,
+              title: 'No Categories',
+              message: 'Start by creating your first expense category',
+              actionLabel: 'Add Category',
+              onAction: _navigateToAddCategory,
+            )
+          : RefreshIndicator(
+              onRefresh: () async => ref.invalidate(categoriesProvider),
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: AppDimensions.screenPadding,
+                      child: _buildSummaryCard(activeCount, totalBudget),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: AppDimensions.spacing16),
+                  ),
+                  ..._buildCategoriesByType(filteredCategories),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: AppDimensions.spacing80),
+                  ),
+                ],
+              ),
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _navigateToAddCategory,
+        backgroundColor: AppColors.primary,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          'Add Category',
+          style: TextStyle(color: Colors.white),
+        ),
+      ),
     );
   }
 
-  Widget _buildSummaryCard(CategoryProvider provider) {
-    final activeCount = provider.activeCount;
-    final totalBudget = provider.totalActiveBudget;
-
+  Widget _buildSummaryCard(int activeCount, double totalBudget) {
     return Container(
       padding: AppDimensions.paddingMD,
       decoration: BoxDecoration(
@@ -146,7 +139,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
             value: activeCount.toString(),
             icon: Icons.check_circle_outline,
           ),
-          Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
+          Container(width: 1, height: 40, color: Colors.white.withValues(alpha: 0.3)),
           _SummaryItem(
             label: 'Total Budget',
             value: 'Rp ${(totalBudget / 1000000).toStringAsFixed(1)}Jt',
@@ -158,7 +151,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
   }
 
   List<Widget> _buildCategoriesByType(List<ExpenseCategory> categories) {
-    final typeGroups = <ExpenseCategoryType, List<ExpenseCategory>>{};
+    final typeGroups = <CategoryType, List<ExpenseCategory>>{};
 
     for (var category in categories) {
       typeGroups.putIfAbsent(category.type, () => []).add(category);
@@ -204,45 +197,45 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     return widgets;
   }
 
-  String _getTypeLabel(ExpenseCategoryType type) {
+  String _getTypeLabel(CategoryType type) {
     switch (type) {
-      case ExpenseCategoryType.subscription:
+      case CategoryType.subscription:
         return 'Subscriptions';
-      case ExpenseCategoryType.dailyContinuous:
+      case CategoryType.dailyContinuous:
         return 'Daily Continuous';
-      case ExpenseCategoryType.usageBased:
+      case CategoryType.usageBased:
         return 'Usage Based';
-      case ExpenseCategoryType.oneTime:
+      case CategoryType.oneTime:
         return 'One Time';
     }
   }
 
   void _toggleCategory(ExpenseCategory category, bool value) async {
-    final provider = context.read<CategoryProvider>();
-    final success = await provider.toggleStatus(category.id, value);
-    if (!mounted) return;
-    if (success) {
+    try {
+      await ref.read(categoryNotifierProvider.notifier).updateCategory(
+        category.id,
+        {'is_active': value},
+      );
+      if (!mounted) return;
       AppToast.showSuccess(
         context,
         'Category ${value ? 'activated' : 'deactivated'} successfully.',
       );
-    } else {
-      final error = provider.submitError;
-      AppToast.showError(context, error ?? 'Failed to update category status.');
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.showError(context, 'Failed to update category status.');
     }
   }
 
   void _navigateToAddCategory() {
-    Navigator.pushNamed(context, '/categories/add').then((_) {
-      if (mounted) context.read<CategoryProvider>().refresh();
+    context.push('/categories/add').then((_) {
+      if (mounted) ref.invalidate(categoriesProvider);
     });
   }
 
   void _navigateToEditCategory(ExpenseCategory category) {
-    Navigator.pushNamed(context, '/categories/edit', arguments: category).then((
-      _,
-    ) {
-      if (mounted) context.read<CategoryProvider>().refresh();
+    context.push('/categories/edit', extra: category).then((_) {
+      if (mounted) ref.invalidate(categoriesProvider);
     });
   }
 }
@@ -264,7 +257,7 @@ class _SummaryItem extends StatelessWidget {
       children: [
         Icon(
           icon,
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white.withValues(alpha: 0.9),
           size: AppDimensions.iconLG,
         ),
         const SizedBox(height: AppDimensions.spacing8),
@@ -279,7 +272,7 @@ class _SummaryItem extends StatelessWidget {
         Text(
           label,
           style: AppTypography.labelSmall.copyWith(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
           ),
         ),
       ],

@@ -1,44 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/constants/app_constants.dart';
-import '../../models/expense_category.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/budget_provider.dart';
+import '../../providers/account_provider.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_card.dart';
 import '../../utils/validators.dart';
 import '../../utils/formatters.dart';
 import '../../utils/app_toast.dart';
 
-class AddExpenseScreen extends StatefulWidget {
+class AddExpenseScreen extends ConsumerStatefulWidget {
   const AddExpenseScreen({super.key});
 
   @override
-  State<AddExpenseScreen> createState() => _AddExpenseScreenState();
+  ConsumerState<AddExpenseScreen> createState() => _AddExpenseScreenState();
 }
 
-class _AddExpenseScreenState extends State<AddExpenseScreen> {
+class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  bool _isSubmitting = false;
   String? _selectedCategoryId;
   DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final now = DateTime.now();
-      context.read<CategoryProvider>().fetchCategories(isActive: true);
-      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year);
-    });
   }
 
   @override
@@ -50,9 +44,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final expenseProvider = context.watch<ExpenseProvider>();
-    final categoryProvider = context.watch<CategoryProvider>();
-    final isSubmitting = expenseProvider.isSubmitting;
+    final isSubmitting = ref.watch(expenseNotifierProvider).isLoading;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Add Expense')),
@@ -90,7 +82,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               text: 'Add Expense',
               isFullWidth: true,
               isLoading: isSubmitting,
-              onPressed: categoryProvider.isLoading ? null : _submitForm,
+              onPressed: isSubmitting ? null : _submitForm,
             ),
           ],
         ),
@@ -103,10 +95,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Widget _buildCategorySelection() {
-    final categoryProvider = context.watch<CategoryProvider>();
-    final budgetProvider = context.watch<BudgetProvider>();
+    final categoriesAsync = ref.watch(categoriesProvider);
+    final budgetsAsync = ref.watch(budgetsProvider());
 
-    if (categoryProvider.isLoading) {
+    if (categoriesAsync.isLoading) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(AppDimensions.spacing16),
@@ -115,7 +107,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       );
     }
 
-    final categories = categoryProvider.activeCategories;
+    final categories = (categoriesAsync.valueOrNull ?? [])
+        .where((c) => c.isActive)
+        .toList();
+    final budgets = budgetsAsync.valueOrNull ?? [];
 
     if (categories.isEmpty) {
       return Padding(
@@ -143,8 +138,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         );
       }).toList(),
       items: categories.map((category) {
-        final budgetItem = budgetProvider.budgets
-            .where((b) => b.category.id == category.id)
+        final budgetItem = budgets
+            .where((b) => b.categoryId == category.id)
             .firstOrNull;
         final remaining = budgetItem?.remainingAmount ?? category.monthlyBudget;
         final isDisabled = remaining <= 0;
@@ -207,11 +202,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Widget _buildAmountInput() {
-    final budgetProvider = context.watch<BudgetProvider>();
+    final budgets = ref.watch(budgetsProvider()).valueOrNull ?? [];
     final budgetItem = _selectedCategoryId != null
-        ? budgetProvider.budgets
-              .where((b) => b.category.id == _selectedCategoryId)
-              .firstOrNull
+        ? budgets.where((b) => b.categoryId == _selectedCategoryId).firstOrNull
         : null;
     final remaining = budgetItem?.remainingAmount ?? double.infinity;
 
@@ -283,35 +276,32 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     if (_formKey.currentState!.validate()) {
       final amount = double.tryParse(_amountController.text) ?? 0;
       final description = _descriptionController.text.trim();
+      final accountId =
+          ref.read(accountsProvider).valueOrNull?.firstOrNull?.id ?? '';
 
-      final success = await context.read<ExpenseProvider>().createExpense(
-        categoryId: _selectedCategoryId!,
-        amount: amount,
-        date: _selectedDate,
-        description: description.isEmpty ? null : description,
-      );
+      try {
+        final result = await ref
+            .read(expenseNotifierProvider.notifier)
+            .createExpense(
+              categoryId: _selectedCategoryId!,
+              amount: amount,
+              description: description,
+              accountId: accountId,
+              date: _selectedDate,
+            );
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (success) {
         AppToast.showSuccess(context, AppConstants.successExpenseSaved);
-        // Show budget alert if triggered
-        final alert = context.read<ExpenseProvider>().lastCreated?.alert;
-        if (alert != null) {
-          AppToast.showInfo(
-            context,
-            alert.message,
-            title: alert.level == 'critical'
-                ? 'Budget Critical'
-                : 'Budget Warning',
-          );
+        if (result.budgetWarning != null) {
+          AppToast.showInfo(context, result.budgetWarning!);
         }
         Navigator.pop(context);
-      } else {
-        final error = context.read<ExpenseProvider>().submitError;
+      } catch (e) {
+        if (!mounted) return;
         AppToast.showError(
           context,
-          error ?? 'Failed to save expense. Please try again.',
+          'Failed to save expense. Please try again.',
         );
       }
     }

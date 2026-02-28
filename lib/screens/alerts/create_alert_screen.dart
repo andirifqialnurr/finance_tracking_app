@@ -1,41 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
-import '../../models/alert.dart';
 import '../../providers/alert_provider.dart';
+import '../../providers/category_provider.dart';
 import '../../utils/app_toast.dart';
 import '../../widgets/common/app_button.dart';
 
-class CreateAlertScreen extends StatefulWidget {
+class CreateAlertScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? existingAlert;
 
   const CreateAlertScreen({super.key, this.existingAlert});
 
   @override
-  State<CreateAlertScreen> createState() => _CreateAlertScreenState();
+  ConsumerState<CreateAlertScreen> createState() => _CreateAlertScreenState();
 }
 
-class _CreateAlertScreenState extends State<CreateAlertScreen> {
+class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _percentageController = TextEditingController();
 
   String? _selectedCategoryId;
   String? _selectedCategoryName;
-
-  // Mock categories
-  final List<Map<String, dynamic>> _categories = [
-    {'id': '1', 'name': 'Food & Dining', 'budget': 500000},
-    {'id': '2', 'name': 'Transportation', 'budget': 400000},
-    {'id': '3', 'name': 'Entertainment', 'budget': 300000},
-    {'id': '4', 'name': 'Utilities', 'budget': 250000},
-    {'id': '5', 'name': 'Healthcare', 'budget': 200000},
-    {'id': '6', 'name': 'Shopping', 'budget': 350000},
-    {'id': '7', 'name': 'Education', 'budget': 450000},
-  ];
+  double? _selectedCategoryBudget;
 
   bool _isLoading = false;
 
@@ -54,8 +44,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     final alert = widget.existingAlert!;
     _selectedCategoryId = alert['category_id'];
     _selectedCategoryName = alert['category'];
-    _amountController.text = alert['threshold_amount'].toString();
-    _percentageController.text = alert['threshold_percentage'].toString();
+    _amountController.text = (alert['threshold_amount'] ?? '').toString();
+    _percentageController.text = (alert['threshold_percentage'] ?? '80')
+        .toString();
   }
 
   @override
@@ -141,9 +132,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     return Container(
       padding: AppDimensions.paddingMD,
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.1),
+        color: AppColors.primary.withValues(alpha: 0.1),
         borderRadius: AppDimensions.borderRadiusLG,
-        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,11 +206,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   }
 
   Widget _buildThresholdAmountSection() {
-    final selectedCategory = _categories.firstWhere(
-      (c) => c['id'] == _selectedCategoryId,
-      orElse: () => {},
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -234,10 +220,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             color: AppColors.textSecondary,
           ),
         ),
-        if (selectedCategory.isNotEmpty) ...[
+        if (_selectedCategoryBudget != null) ...[
           const SizedBox(height: AppDimensions.spacing4),
           Text(
-            'Current budget: Rp${(selectedCategory['budget'] / 1000).toStringAsFixed(0)}K',
+            'Current budget: Rp${(_selectedCategoryBudget! / 1000).toStringAsFixed(0)}K',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.primary,
               fontWeight: FontWeight.w500,
@@ -357,14 +343,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.primary.withOpacity(0.1),
-            AppColors.primary.withOpacity(0.05),
+            AppColors.primary.withValues(alpha: 0.1),
+            AppColors.primary.withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: AppDimensions.borderRadiusLG,
-        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,7 +390,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           Container(
             padding: AppDimensions.paddingSM,
             decoration: BoxDecoration(
-              color: AppColors.warning.withOpacity(0.1),
+              color: AppColors.warning.withValues(alpha: 0.1),
               borderRadius: AppDimensions.borderRadiusSM,
             ),
             child: Row(
@@ -432,13 +418,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   }
 
   void _showCategoryPicker() {
+    final categoriesAsync = ref.read(categoriesProvider);
+    final categories = categoriesAsync.valueOrNull ?? [];
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
+      builder: (ctx) => Padding(
         padding: AppDimensions.paddingLG,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -452,62 +441,76 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ),
             const SizedBox(height: AppDimensions.spacing16),
 
-            ..._categories.map((category) {
-              final isSelected = category['id'] == _selectedCategoryId;
-              return Column(
-                children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary
-                            : AppColors.background,
-                        borderRadius: AppDimensions.borderRadiusMD,
-                      ),
-                      child: Icon(
-                        Icons.category,
-                        color: isSelected
-                            ? Colors.white
-                            : AppColors.textSecondary,
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(
-                      category['name'],
-                      style: AppTypography.bodyMedium.copyWith(
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Budget: Rp${(category['budget'] / 1000).toStringAsFixed(0)}K',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    trailing: isSelected
-                        ? Icon(Icons.check_circle, color: AppColors.primary)
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        _selectedCategoryId = category['id'];
-                        _selectedCategoryName = category['name'];
-                        // Auto-fill threshold amount with budget
-                        _amountController.text = category['budget'].toString();
-                      });
-                      Navigator.pop(context);
-                    },
+            if (categories.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(AppDimensions.spacing16),
+                child: Text(
+                  'No categories found. Please create categories first.',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
                   ),
-                  if (category != _categories.last) const Divider(height: 1),
-                ],
-              );
-            }),
+                ),
+              )
+            else
+              ...categories.map((category) {
+                final isSelected = category.id == _selectedCategoryId;
+                return Column(
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.background,
+                          borderRadius: AppDimensions.borderRadiusMD,
+                        ),
+                        child: Icon(
+                          Icons.category,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        category.name,
+                        style: AppTypography.bodyMedium.copyWith(
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Budget: Rp${(category.monthlyBudget / 1000).toStringAsFixed(0)}K',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? Icon(Icons.check_circle, color: AppColors.primary)
+                          : null,
+                      onTap: () {
+                        setState(() {
+                          _selectedCategoryId = category.id;
+                          _selectedCategoryName = category.name;
+                          _selectedCategoryBudget = category.monthlyBudget;
+                          // Auto-fill threshold amount with budget
+                          _amountController.text = category.monthlyBudget
+                              .round()
+                              .toString();
+                        });
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                    if (category != categories.last) const Divider(height: 1),
+                  ],
+                );
+              }),
 
-            SizedBox(height: MediaQuery.of(context).padding.bottom),
+            SizedBox(height: MediaQuery.of(ctx).padding.bottom),
           ],
         ),
       ),
@@ -515,22 +518,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   }
 
   void _showQuickAmountPicker() {
-    final selectedCategory = _categories.firstWhere(
-      (c) => c['id'] == _selectedCategoryId,
-      orElse: () => {},
-    );
-
-    if (selectedCategory.isEmpty) {
+    if (_selectedCategoryBudget == null) {
       AppToast.showInfo(context, 'Please select a category first.');
       return;
     }
 
-    final budget = selectedCategory['budget'] as int;
+    final budget = _selectedCategoryBudget!;
     final amounts = [
       {'label': '50%', 'value': budget * 0.5},
       {'label': '75%', 'value': budget * 0.75},
       {'label': '90%', 'value': budget * 0.9},
-      {'label': '100%', 'value': budget.toDouble()},
+      {'label': '100%', 'value': budget},
     ];
 
     showModalBottomSheet(
@@ -539,7 +537,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
+      builder: (ctx) => Padding(
         padding: AppDimensions.paddingLG,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -553,7 +551,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ),
             const SizedBox(height: AppDimensions.spacing8),
             Text(
-              'Based on ${selectedCategory['name']} budget',
+              'Based on ${_selectedCategoryName ?? 'category'} budget',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -583,13 +581,13 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     setState(() {
                       _amountController.text = value.round().toString();
                     });
-                    Navigator.pop(context);
+                    Navigator.pop(ctx);
                   },
                 ),
               );
             }),
 
-            SizedBox(height: MediaQuery.of(context).padding.bottom),
+            SizedBox(height: MediaQuery.of(ctx).padding.bottom),
           ],
         ),
       ),
@@ -612,27 +610,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final request = CreateAlertRequest(
-        categoryId: _selectedCategoryId!,
-        thresholdPercentage: int.parse(_percentageController.text),
-      );
-
-      final provider = context.read<AlertProvider>();
-      final success = await provider.createAlert(request);
+      await ref.read(alertNotifierProvider.notifier).createAlert({
+        'category_id': _selectedCategoryId!,
+        'threshold_percentage': int.parse(_percentageController.text),
+        if (_amountController.text.isNotEmpty)
+          'threshold_amount': double.tryParse(_amountController.text),
+      });
 
       if (mounted) {
-        if (success) {
-          AppToast.showSuccess(
-            context,
-            provider.createSuccess ?? 'Alert created successfully!',
-          );
-          Navigator.pop(context, true); // Return true to indicate success
-        } else {
-          AppToast.showError(
-            context,
-            'Failed to create alert. Please try again.',
-          );
-        }
+        AppToast.showSuccess(context, 'Alert created successfully!');
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {

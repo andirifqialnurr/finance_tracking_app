@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
@@ -13,29 +14,19 @@ import '../../widgets/dashboard/summary_card.dart';
 import '../../widgets/dashboard/income_expense_chart.dart';
 import '../../utils/formatters.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Sample chart data
   final List<MonthlyData> chartData = [
     MonthlyData(month: 1, year: 2026, income: 8000000, expense: 1800000),
     MonthlyData(month: 2, year: 2026, income: 8000000, expense: 1850000),
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final now = DateTime.now();
-      context.read<TransactionProvider>().fetchTransactions(sort: 'date_desc');
-      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,8 +80,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHeader() {
-    final provider = context.watch<BudgetProvider>();
-    final monthYear = Formatters.formatMonthYear(provider.month, provider.year);
+    final now = DateTime.now();
+    final monthYear = Formatters.formatMonthYear(now.month, now.year);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,64 +99,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSummaryCards() {
-    return Consumer<BudgetProvider>(
-      builder: (context, budgetProvider, _) {
-        final summary = budgetProvider.summary;
-        final totalIncome = summary?.totalIncome ?? 0.0;
-        final totalAllocated = summary?.totalAllocated ?? 0.0;
-        final totalSpent = summary?.totalSpent ?? 0.0;
-        final totalRemaining = summary?.totalRemaining ?? 0.0;
+    final summaryAsync = ref.watch(budgetSummaryProvider());
+    final summary = summaryAsync.valueOrNull;
+    final totalIncome = summary?.totalIncome ?? 0.0;
+    final totalAllocated = summary?.totalAllocated ?? 0.0;
+    final totalSpent = summary?.totalSpent ?? 0.0;
+    final totalRemaining = summary?.totalRemaining ?? 0.0;
 
-        return GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: AppDimensions.spacing16,
-          mainAxisSpacing: AppDimensions.spacing16,
-          childAspectRatio: 1.4,
-          children: [
-            SummaryCard(
-              title: 'Total Income',
-              amount: totalIncome,
-              icon: Icons.arrow_downward,
-              iconColor: AppColors.success,
-              onTap: () {
-                Navigator.pushNamed(context, Routes.incomeHistory);
-              },
-            ),
-            SummaryCard(
-              title: 'Allocated',
-              amount: totalAllocated,
-              icon: Icons.account_balance_wallet_outlined,
-              iconColor: AppColors.info,
-              onTap: () async {
-                await Navigator.pushNamed(context, Routes.budgetOverview);
-                if (!mounted) return;
-                final now = DateTime.now();
-                context.read<BudgetProvider>().fetchAll(
-                  month: now.month,
-                  year: now.year,
-                );
-              },
-            ),
-            SummaryCard(
-              title: 'Spent',
-              amount: totalSpent,
-              icon: Icons.arrow_upward,
-              iconColor: AppColors.error,
-              onTap: () {
-                Navigator.pushNamed(context, Routes.expenseHistory);
-              },
-            ),
-            SummaryCard(
-              title: 'Remaining',
-              amount: totalRemaining,
-              icon: Icons.savings_outlined,
-              iconColor: AppColors.warning,
-            ),
-          ],
-        );
-      },
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: AppDimensions.spacing16,
+      mainAxisSpacing: AppDimensions.spacing16,
+      childAspectRatio: 1.4,
+      children: [
+        SummaryCard(
+          title: 'Total Income',
+          amount: totalIncome,
+          icon: Icons.arrow_downward,
+          iconColor: AppColors.success,
+          onTap: () {
+            context.push(Routes.incomeHistory);
+          },
+        ),
+        SummaryCard(
+          title: 'Allocated',
+          amount: totalAllocated,
+          icon: Icons.account_balance_wallet_outlined,
+          iconColor: AppColors.info,
+          onTap: () async {
+            await context.push(Routes.budgetOverview);
+            if (!mounted) return;
+            ref.invalidate(budgetSummaryProvider);
+          },
+        ),
+        SummaryCard(
+          title: 'Spent',
+          amount: totalSpent,
+          icon: Icons.arrow_upward,
+          iconColor: AppColors.error,
+          onTap: () {
+            context.push(Routes.expenseHistory);
+          },
+        ),
+        SummaryCard(
+          title: 'Remaining',
+          amount: totalRemaining,
+          icon: Icons.savings_outlined,
+          iconColor: AppColors.warning,
+        ),
+      ],
     );
   }
 
@@ -181,7 +165,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               TextButton(
                 onPressed: () {
                   // Navigate to transaction history to see all transactions
-                  Navigator.pushNamed(context, Routes.transactionHistory);
+                  context.push(Routes.transactionHistory);
                 },
                 child: const Text('View All'),
               ),
@@ -197,63 +181,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildRecentActivity() {
-    return Consumer<TransactionProvider>(
-      builder: (context, provider, _) {
-        final recent = provider.transactions.take(5).toList();
-        return AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final transactionsAsync = ref.watch(transactionsProvider(limit: 5));
+    final recent = transactionsAsync.valueOrNull ?? [];
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Recent Activity', style: AppTypography.titleMedium),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, Routes.transactionHistory);
-                    },
-                    child: const Text('View All'),
-                  ),
-                ],
+              Text('Recent Activity', style: AppTypography.titleMedium),
+              TextButton(
+                onPressed: () {
+                  context.push(Routes.transactionHistory);
+                },
+                child: const Text('View All'),
               ),
-              const SizedBox(height: AppDimensions.spacing16),
-              if (provider.isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: AppDimensions.spacing16,
-                    ),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (recent.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: AppDimensions.spacing16,
-                  ),
-                  child: Center(
-                    child: Text(
-                      'No recent transactions',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ),
-                )
-              else
-                ...recent.asMap().entries.map((entry) {
-                  final isLast = entry.key == recent.length - 1;
-                  return _buildTransactionItem(entry.value, isLast);
-                }),
             ],
           ),
-        );
-      },
+          const SizedBox(height: AppDimensions.spacing16),
+          if (transactionsAsync.isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: AppDimensions.spacing16,
+                ),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (recent.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: AppDimensions.spacing16,
+              ),
+              child: Center(
+                child: Text(
+                  'No recent transactions',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ),
+            )
+          else
+            ...recent.asMap().entries.map((entry) {
+              final isLast = entry.key == recent.length - 1;
+              return _buildTransactionItem(entry.value, isLast);
+            }),
+        ],
+      ),
     );
   }
 
   Widget _buildTransactionItem(Transaction transaction, bool isLast) {
-    final isIncome = transaction.isIncome;
+    final isIncome = transaction.type == 'income';
     final title = isIncome
         ? (transaction.source ?? 'Income')
         : (transaction.category?.name ?? 'Expense');
@@ -262,7 +243,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         InkWell(
           onTap: () {
-            Navigator.pushNamed(context, Routes.transactionHistory);
+            context.push(Routes.transactionHistory);
           },
           borderRadius: AppDimensions.borderRadiusMD,
           child: Padding(
@@ -276,8 +257,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   padding: const EdgeInsets.all(AppDimensions.spacing8),
                   decoration: BoxDecoration(
                     color: isIncome
-                        ? AppColors.success.withOpacity(0.1)
-                        : AppColors.error.withOpacity(0.1),
+                        ? AppColors.success.withValues(alpha: 0.1)
+                        : AppColors.error.withValues(alpha: 0.1),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: Icon(
@@ -362,7 +343,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 leading: Container(
                   padding: const EdgeInsets.all(AppDimensions.spacing8),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.1),
+                    color: AppColors.success.withValues(alpha: 0.1),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: const Icon(
@@ -374,14 +355,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 subtitle: const Text('Record new income'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.pushNamed(context, Routes.addIncome);
+                  context.push(Routes.addIncome);
                 },
               ),
               ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(AppDimensions.spacing8),
                   decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.1),
+                    color: AppColors.error.withValues(alpha: 0.1),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: const Icon(Icons.arrow_upward, color: AppColors.error),
@@ -390,14 +371,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 subtitle: const Text('Record new expense'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.pushNamed(context, Routes.addExpense);
+                  context.push(Routes.addExpense);
                 },
               ),
               ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(AppDimensions.spacing8),
                   decoration: BoxDecoration(
-                    color: AppColors.info.withOpacity(0.1),
+                    color: AppColors.info.withValues(alpha: 0.1),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: const Icon(
@@ -409,7 +390,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 subtitle: const Text('Add or edit categories'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.pushNamed(context, Routes.categoryManagement);
+                  context.push(Routes.categoryManagement);
                 },
               ),
             ],
@@ -420,11 +401,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData() async {
-    final now = DateTime.now();
-    await Future.wait([
-      context.read<TransactionProvider>().refresh(),
-      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year),
-    ]);
+    ref.invalidate(transactionsProvider);
+    ref.invalidate(budgetSummaryProvider);
   }
 
   void _openNotifications() {

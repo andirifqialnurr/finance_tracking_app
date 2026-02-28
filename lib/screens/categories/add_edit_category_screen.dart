@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
@@ -12,21 +12,22 @@ import '../../widgets/common/app_card.dart';
 import '../../utils/validators.dart';
 import '../../utils/app_toast.dart';
 
-class AddEditCategoryScreen extends StatefulWidget {
+class AddEditCategoryScreen extends ConsumerStatefulWidget {
   final ExpenseCategory? category; // If null, create new category
 
   const AddEditCategoryScreen({super.key, this.category});
 
   @override
-  State<AddEditCategoryScreen> createState() => _AddEditCategoryScreenState();
+  ConsumerState<AddEditCategoryScreen> createState() =>
+      _AddEditCategoryScreenState();
 }
 
-class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
+class _AddEditCategoryScreenState extends ConsumerState<AddEditCategoryScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _budgetController = TextEditingController();
 
-  ExpenseCategoryType _selectedType = ExpenseCategoryType.dailyContinuous;
+  CategoryType _selectedType = CategoryType.dailyContinuous;
   bool _isActive = true;
   int _selectedPriority = 1;
 
@@ -38,7 +39,7 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
       _budgetController.text = widget.category!.monthlyBudget.toStringAsFixed(
         0,
       );
-      _selectedPriority = _priorityToTier(widget.category!.priority);
+      _selectedPriority = _priorityToTier(widget.category!.allocationPriority);
       _selectedType = widget.category!.type;
       _isActive = widget.category!.isActive;
     }
@@ -129,14 +130,12 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
             ],
 
             // Submit Button
-            Consumer<CategoryProvider>(
-              builder: (context, provider, _) => AppButton(
-                text: isEditing ? 'Save Changes' : 'Create Category',
-                isFullWidth: true,
-                isLoading: provider.isSubmitting,
-                onPressed: _submitForm,
-                variant: AppButtonVariant.primary,
-              ),
+            AppButton(
+              text: isEditing ? 'Save Changes' : 'Create Category',
+              isFullWidth: true,
+              isLoading: ref.watch(categoryNotifierProvider).isLoading,
+              onPressed: _submitForm,
+              variant: AppButtonVariant.primary,
             ),
           ],
         ),
@@ -162,7 +161,7 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
     return Wrap(
       spacing: AppDimensions.spacing8,
       runSpacing: AppDimensions.spacing8,
-      children: ExpenseCategoryType.values.map((type) {
+      children: CategoryType.values.map((type) {
         final isSelected = _selectedType == type;
         return ChoiceChip(
           label: Text(_getTypeLabel(type)),
@@ -174,7 +173,7 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
               });
             }
           },
-          selectedColor: AppColors.primary.withOpacity(0.2),
+          selectedColor: AppColors.primary.withValues(alpha: 0.2),
           labelStyle: AppTypography.labelMedium.copyWith(
             color: isSelected ? AppColors.primary : AppColors.textSecondary,
           ),
@@ -253,22 +252,22 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
                 _isActive = value;
               });
             },
-            activeColor: AppColors.success,
+            activeThumbColor: AppColors.success,
           ),
         ],
       ),
     );
   }
 
-  String _getTypeLabel(ExpenseCategoryType type) {
+  String _getTypeLabel(CategoryType type) {
     switch (type) {
-      case ExpenseCategoryType.subscription:
+      case CategoryType.subscription:
         return 'Subscription';
-      case ExpenseCategoryType.dailyContinuous:
+      case CategoryType.dailyContinuous:
         return 'Daily Continuous';
-      case ExpenseCategoryType.usageBased:
+      case CategoryType.usageBased:
         return 'Usage Based';
-      case ExpenseCategoryType.oneTime:
+      case CategoryType.oneTime:
         return 'One Time';
     }
   }
@@ -278,30 +277,26 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
       final name = _nameController.text.trim();
       final budget = double.tryParse(_budgetController.text) ?? 0;
       final priority = _selectedPriority;
+      final data = {
+        'name': name,
+        'type': _selectedType.name,
+        'monthly_budget': budget,
+        'allocation_priority': priority,
+        'is_active': _isActive,
+      };
 
-      bool success;
-      if (isEditing) {
-        success = await context.read<CategoryProvider>().updateCategory(
-          id: widget.category!.id,
-          name: name,
-          type: _selectedType,
-          monthlyBudget: budget,
-          allocationPriority: priority,
-          isActive: _isActive,
-        );
-      } else {
-        success = await context.read<CategoryProvider>().createCategory(
-          name: name,
-          type: _selectedType,
-          monthlyBudget: budget,
-          allocationPriority: priority,
-          isActive: _isActive,
-        );
-      }
+      try {
+        if (isEditing) {
+          await ref
+              .read(categoryNotifierProvider.notifier)
+              .updateCategory(widget.category!.id, data);
+        } else {
+          await ref
+              .read(categoryNotifierProvider.notifier)
+              .createCategory(data);
+        }
 
-      if (!mounted) return;
-
-      if (success) {
+        if (!mounted) return;
         AppToast.showSuccess(
           context,
           isEditing
@@ -309,11 +304,11 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
               : AppConstants.successCategorySaved,
         );
         Navigator.pop(context);
-      } else {
-        final error = context.read<CategoryProvider>().submitError;
+      } catch (e) {
+        if (!mounted) return;
         AppToast.showError(
           context,
-          error ?? 'Failed to save category. Please try again.',
+          'Failed to save category. Please try again.',
         );
       }
     }
@@ -346,20 +341,19 @@ class _AddEditCategoryScreenState extends State<AddEditCategoryScreen> {
   }
 
   void _deleteCategory() async {
-    final success = await context.read<CategoryProvider>().deleteCategory(
-      widget.category!.id,
-    );
+    try {
+      await ref
+          .read(categoryNotifierProvider.notifier)
+          .deleteCategory(widget.category!.id);
 
-    if (!mounted) return;
-
-    if (success) {
+      if (!mounted) return;
       AppToast.showSuccess(context, 'Category deleted successfully.');
       Navigator.pop(context);
-    } else {
-      final error = context.read<CategoryProvider>().submitError;
+    } catch (e) {
+      if (!mounted) return;
       AppToast.showError(
         context,
-        error ?? 'Failed to delete category. Please try again.',
+        'Failed to delete category. Please try again.',
       );
     }
   }

@@ -42,8 +42,8 @@ class CategoryListItem extends StatelessWidget {
               height: 48,
               decoration: BoxDecoration(
                 color: category.isActive
-                    ? AppColors.primary.withOpacity(0.1)
-                    : AppColors.textMuted.withOpacity(0.1),
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : AppColors.textMuted.withValues(alpha: 0.1),
                 borderRadius: AppDimensions.borderRadiusMD,
               ),
               child: Icon(
@@ -88,7 +88,7 @@ class CategoryListItem extends StatelessWidget {
                   ),
                   const SizedBox(height: AppDimensions.spacing4),
                   Text(
-                    'Priority: ${category.priorityLabel}',
+                    'Priority: ${category.allocationPriority}',
                     style: AppTypography.labelSmall.copyWith(
                       color: AppColors.textMuted,
                     ),
@@ -102,7 +102,7 @@ class CategoryListItem extends StatelessWidget {
               Switch(
                 value: category.isActive,
                 onChanged: onToggle,
-                activeColor: AppColors.success,
+                activeThumbColor: AppColors.success,
               ),
           ],
         ),
@@ -110,24 +110,24 @@ class CategoryListItem extends StatelessWidget {
     );
   }
 
-  Widget _buildTypeBadge(ExpenseCategoryType type) {
+  Widget _buildTypeBadge(CategoryType type) {
     Color color;
     String label;
 
     switch (type) {
-      case ExpenseCategoryType.subscription:
+      case CategoryType.subscription:
         color = AppColors.info;
         label = 'SUB';
         break;
-      case ExpenseCategoryType.dailyContinuous:
+      case CategoryType.dailyContinuous:
         color = AppColors.warning;
         label = 'DAILY';
         break;
-      case ExpenseCategoryType.usageBased:
+      case CategoryType.usageBased:
         color = AppColors.primary;
         label = 'USAGE';
         break;
-      case ExpenseCategoryType.oneTime:
+      case CategoryType.oneTime:
         color = AppColors.error;
         label = 'ONE-TIME';
         break;
@@ -139,7 +139,7 @@ class CategoryListItem extends StatelessWidget {
         vertical: AppDimensions.spacing4,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: AppDimensions.borderRadiusSM,
       ),
       child: Text(
@@ -152,15 +152,15 @@ class CategoryListItem extends StatelessWidget {
     );
   }
 
-  IconData _getCategoryIcon(ExpenseCategoryType type) {
+  IconData _getCategoryIcon(CategoryType type) {
     switch (type) {
-      case ExpenseCategoryType.subscription:
+      case CategoryType.subscription:
         return Icons.subscriptions_outlined;
-      case ExpenseCategoryType.dailyContinuous:
+      case CategoryType.dailyContinuous:
         return Icons.trending_up_outlined;
-      case ExpenseCategoryType.usageBased:
+      case CategoryType.usageBased:
         return Icons.sync_outlined;
-      case ExpenseCategoryType.oneTime:
+      case CategoryType.oneTime:
         return Icons.shopping_bag_outlined;
     }
   }

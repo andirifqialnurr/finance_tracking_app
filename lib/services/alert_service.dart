@@ -43,11 +43,11 @@ class AlertService {
   /// Create a new budget alert
   ///
   /// Body: { category_id, threshold_percentage, is_enabled }
-  Future<BudgetAlert> createAlert(CreateAlertRequest request) async {
+  Future<BudgetAlert> createAlert(Map<String, dynamic> body) async {
     try {
       final response = await _apiClient.post(
         ApiEndpoints.createAlert,
-        body: request.toJson(),
+        body: body,
       );
 
       return BudgetAlert.fromJson(response['data'] as Map<String, dynamic>);
@@ -59,11 +59,11 @@ class AlertService {
   /// Update an existing alert — uses PATCH (not PUT)
   ///
   /// Body: { threshold_percentage?, is_enabled? }
-  Future<BudgetAlert> updateAlert(String id, UpdateAlertRequest request) async {
+  Future<BudgetAlert> updateAlert(String id, Map<String, dynamic> body) async {
     try {
       final response = await _apiClient.patch(
         ApiEndpoints.updateAlert(id),
-        body: request.toJson(),
+        body: body,
       );
 
       return BudgetAlert.fromJson(response['data'] as Map<String, dynamic>);
@@ -83,12 +83,12 @@ class AlertService {
 
   /// Disable an alert (set is_enabled = false)
   Future<BudgetAlert> disableAlert(String id) async {
-    return updateAlert(id, UpdateAlertRequest(isEnabled: false));
+    return updateAlert(id, {'is_enabled': false});
   }
 
   /// Enable an alert (set is_enabled = true)
   Future<BudgetAlert> enableAlert(String id) async {
-    return updateAlert(id, UpdateAlertRequest(isEnabled: true));
+    return updateAlert(id, {'is_enabled': true});
   }
 
   void dispose() {

@@ -43,7 +43,7 @@ class CategoryService {
   /// Create new category
   Future<ExpenseCategory> createCategory({
     required String name,
-    required ExpenseCategoryType type,
+    required CategoryType type,
     required double monthlyBudget,
     required int allocationPriority,
     bool isActive = true,
@@ -52,7 +52,7 @@ class CategoryService {
     try {
       final body = <String, dynamic>{
         'name': name,
-        'type': type.value,
+        'type': type.name,
         'monthly_budget': monthlyBudget,
         'allocation_priority': allocationPriority,
         'is_active': isActive,
@@ -70,7 +70,7 @@ class CategoryService {
   Future<ExpenseCategory> updateCategory({
     required String id,
     String? name,
-    ExpenseCategoryType? type,
+    CategoryType? type,
     double? monthlyBudget,
     int? allocationPriority,
     bool? isActive,
@@ -79,7 +79,7 @@ class CategoryService {
     try {
       final body = <String, dynamic>{};
       if (name != null) body['name'] = name;
-      if (type != null) body['type'] = type.value;
+      if (type != null) body['type'] = type.name;
       if (monthlyBudget != null) body['monthly_budget'] = monthlyBudget;
       if (allocationPriority != null)
         body['allocation_priority'] = allocationPriority;
@@ -116,13 +116,11 @@ class CategoryService {
   }
 
   /// Get categories by type
-  Future<List<ExpenseCategory>> getCategoriesByType(
-    ExpenseCategoryType type,
-  ) async {
+  Future<List<ExpenseCategory>> getCategoriesByType(CategoryType type) async {
     try {
       final response = await _apiClient.get(
         '/categories',
-        queryParams: {'type': type.value},
+        queryParams: {'type': type.name},
       );
 
       final List<dynamic> data = response['data'] ?? [];

@@ -1,213 +1,411 @@
-# Finance Tracking App - Arsitektur & Flow
+﻿# Finance Tracking App - Arsitektur & Flow (v2)
+
+> **Last Updated**: February 28, 2026
+> **Status Backend**: Phase 4 — Account Management, Transfer, OneSignal, Advanced Analytics
+
+---
 
 ## 📋 Deskripsi Umum
-Aplikasi finance tracking pribadi untuk membantu tracking pemasukan dan pengeluaran dengan sistem alokasi otomatis dan kategori yang dapat disesuaikan.
+
+Aplikasi finance tracking pribadi untuk membantu tracking pemasukan dan pengeluaran dengan manajemen akun (Card/Cash/Savings), transfer antar akun, sistem alokasi otomatis dari gaji, kategori pengeluaran kustom, dan notifikasi berbasis jadwal via OneSignal.
 
 ---
 
 ## 🎯 Fitur Utama
 
-### 1. Income Management (Pemasukan)
-- Catat pemasukan dari berbagai sumber (gaji, project, dll)
-- Auto-allocate pemasukan ke berbagai kategori pengeluaran
-- History pemasukan dengan detail sumber
+### 1. Account Management (Akun Dana)
+- Tiga jenis akun: **Card**, **Cash**, **Savings**
+- User bisa punya **lebih dari 1 Card**
+- Setiap akun memiliki fitur:
+  - **Edit**: Ubah nama, warna, atau keterangan akun
+  - **Top Up (Income)**: Tambah saldo masuk ke akun
+  - **Spent**: Catat pengeluaran langsung dari akun
+  - **Transfer**: Transfer dana ke akun lain
+  - **Archive**: Nonaktifkan akun (soft delete)
+- **Card** memiliki sub-kategori sumber pendapatan:
+  - `SALARY` — Gaji tetap bulanan
+  - `PROJECT` — Honorarium / project fee
+  - `FREELANCE` — Pendapatan lepas
+  - `BUSINESS` — Pendapatan usaha
+  - `OTHER` — Lainnya
+- **Savings** memiliki:
+  - `current_balance` — Saldo terkini
+  - `goal_amount` — Target tabungan
+  - `goal_label` — Tujuan tabungan (mis: "Liburan Bali", "Gadget Baru")
+  - Progress persentase menuju goal
+- **Cash** memiliki saldo aktual uang tunai
 
-### 2. Expense Management (Pengeluaran)
-- **Tipe Pengeluaran:**
-  - **SUBSCRIPTION**: Pembayaran bulanan tetap (Netflix, Spotify, dll)
-  - **DAILY_CONTINUOUS**: Pengeluaran harian berulang (Makan)
-  - **USAGE_BASED**: Berbasis penggunaan dengan budget tetap (Bensin, Listrik)
-  - **ONE_TIME**: Pengeluaran sekali bayar
+### 2. Transfer Antar Akun
+- Dana dapat dipindahkan bebas antar Card, Cash, dan Savings
+- Transfer mencatat: akun sumber, akun tujuan, jumlah, catatan, tanggal
+- Transfer tidak mempengaruhi budget allocation — hanya memindahkan saldo fisik
+- History transfer tersimpan per akun
+- Transfer bisa di-cancel dalam 24 jam (rollback saldo)
 
-- **Budget Allocation**: Setiap kategori punya budget yang terisi otomatis saat ada pemasukan
-- **Budget Tracking**: Track sisa budget per kategori
-- **Expense Recording**: Catat setiap pengeluaran yang mengurangi budget kategori
+### 3. Income Management (Pemasukan)
+- Setiap pemasukan **di-link ke akun** sumber dana
+- Jika akun tipe `Card` dengan `income_type = SALARY`:
+  - **Auto-trigger alokasi budget** ke semua kategori aktif
+  - Jika bulan itu belum ada alokasi, otomatis dibuat
+  - Jika sudah ada alokasi, sistem memperingatkan dan minta konfirmasi re-alokasi
+- Income non-SALARY tidak mentrigger auto-allocation
 
-### 3. Budget Auto-Allocation
-- Ketika ada pemasukan, otomatis dialokasikan ke semua kategori aktif
-- Alokasi berdasarkan persentase atau jumlah tetap per kategori
+### 4. Expense Management (Pengeluaran)
+- Setiap pengeluaran di-link ke akun sumber dana
+- Saldo akun terkurang otomatis setiap expense dicatat
+- **Tipe Kategori Pengeluaran:**
+  - `SUBSCRIPTION` — Bulanan tetap (Netflix, Spotify)
+  - `DAILY_CONTINUOUS` — Harian berulang dengan nominal kustom per hari
+  - `USAGE_BASED` — Berbasis penggunaan dengan budget tetap (Bensin, Listrik)
+  - `ONE_TIME` — Sekali bayar
+
+- **DAILY_CONTINUOUS custom per bulan**:
+  - User menetapkan nominal harian (mis.: Rp 40.000/hari untuk makan)
+  - Sistem menghitung otomatis: `daily_amount x days_in_month`
+  - Januari (31 hari): Rp 1.240.000
+  - Februari (28 hari): Rp 1.120.000
+  - Tidak perlu set ulang manual tiap bulan
+
+### 5. Budget Auto-Allocation
+- Saat income dari akun SALARY masuk, otomatis alokasikan ke semua kategori aktif
+- Alokasi berdasarkan persentase proporsional dari total monthly budget semua kategori
+- Validasi tidak ada double-alokasi di bulan yang sama
 - Real-time update sisa budget setelah expense dicatat
 
-### 4. Transaction Management
-- **Combined History**: View semua transaksi (income + expense) dalam satu timeline
-- **Edit/Delete**: Full CRUD untuk income dan expense
-- **Reallocation**: Manual adjust budget antar kategori di tengah bulan
+### 6. Statistics & Analytics
+- **Monthly Statistics**: Total income dan expense per bulan
+- **Account Balance Overview**: Saldo semua akun real-time
+- **Budget Performance**: Kategori over/under budget
+- **Spending Patterns**: Trend konsumsi 6 bulan terakhir
+- **Transfer History**: Riwayat aliran dana antar akun
 
-### 5. Analytics & Insights
-- **Spending Patterns**: Track pola pengeluaran per kategori
-- **Trend Analysis**: Perbandingan bulan ini vs bulan lalu
-- **Budget Performance**: Kategori mana yang sering over/under budget
-- **Monthly Reports**: Comprehensive financial summary
+### 7. Budget Management
+- Auto-Reset tiap awal bulan
+- Unused budget: rollover atau reset ke 0 (configurable)
+- Budget Alerts: Warning ketika budget hampir habis (configurable threshold)
+- Manual Budget Reallocation antar kategori
 
-### 6. Budget Management
-- **Auto-Reset**: Otomatis reset budget setiap awal bulan
-- **Unused Budget Handling**: Rollover atau reset ke 0
-- **Budget Alerts**: Warning ketika budget hampir habis (configurable threshold)
-- **Manual Budget Adjustment**: Realokasi budget antar kategori
+### 8. Notification & Reminder (OneSignal)
+- Reminder jadwal alokasi dana (mis.: "Tanggal 25, setting alokasi gaji")
+- Jadwal reminder bisa dikonfigurasi: tanggal berapa, jam berapa
+- Alert budget habis/hampir habis
+- Reminder goal savings progress
+- **Scheduled Fund**: Transfer atau top-up terjadwal ke akun tertentu tiap bulan
 
 ---
 
 ## 🏗️ Arsitektur Sistem
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Mobile/Web App                      │
-│                    (React/Flutter)                      │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            │ HTTP/REST API
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Backend API (Go)                      │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │              API Handlers Layer                  │  │
-│  │  - Income Handler                                │  │
-│  │  - Expense Handler                               │  │
-│  │  - Category Handler                              │  │
-│  │  - Budget Handler                                │  │
-│  │  - Transaction Handler                           │  │
-│  │  - Analytics Handler                             │  │
-│  │  - Report Handler                                │  │
-│  └──────────────────────────────────────────────────┘  │
-│                           │                             │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │           Business Logic Layer                   │  │
-│  │  - Budget Allocation Service                     │  │
-│  │  - Budget Reallocation Service                   │  │
-│  │  - Budget Reset Service                          │  │
-│  │  - Category Management Service                   │  │
-│  │  - Transaction Service                           │  │
-│  │  - Analytics Service                             │  │
-│  │  - Alert Service                                 │  │
-│  └──────────────────────────────────────────────────┘  │
-│                           │                             │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │              Data Access Layer                   │  │
-│  │  - Repository Pattern                            │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                PostgreSQL Database                      │
-│  - incomes                                              │
-│  - expense_categories                                   │
-│  - category_budgets                                     │
-│  - expenses                                             │
-│  - budget_allocations                                   │
-└─────────────────────────────────────────────────────────┘
++---------------------------------------------------------+
+|                     Mobile/Web App                      |
+|                    (Flutter/React)                      |
++---------------------------------------------------------+
+                            |
+                            | HTTP/REST API
+                            v
++---------------------------------------------------------+
+|                   Backend API (Go)                      |
+|  +----------------------------------------------------+ |
+|  |              API Handlers Layer                    | |
+|  |  - Account Handler      (NEW)                      | |
+|  |  - Transfer Handler     (NEW)                      | |
+|  |  - Income Handler       (Updated)                  | |
+|  |  - Expense Handler      (Updated)                  | |
+|  |  - Category Handler     (Updated)                  | |
+|  |  - Budget Handler                                  | |
+|  |  - Transaction Handler  (Updated)                  | |
+|  |  - Statistics Handler   (NEW)                      | |
+|  |  - Analytics Handler                               | |
+|  |  - Report Handler                                  | |
+|  |  - Alert Handler                                   | |
+|  |  - Notification Handler (NEW)                      | |
+|  +----------------------------------------------------+ |
+|                           |                             |
+|  +----------------------------------------------------+ |
+|  |           Business Logic Layer                     | |
+|  |  - Account Service          (NEW)                  | |
+|  |  - Transfer Service         (NEW)                  | |
+|  |  - Budget Allocation Service (Updated)             | |
+|  |  - Category Service         (Updated)              | |
+|  |  - Statistics Service       (NEW)                  | |
+|  |  - Notification Service     (NEW - OneSignal)      | |
+|  |  - Scheduler Service        (Updated)              | |
+|  |  - Analytics Service                               | |
+|  |  - Alert Service                                   | |
+|  +----------------------------------------------------+ |
+|                           |                             |
+|  +----------------------------------------------------+ |
+|  |              Data Access Layer                     | |
+|  |  - Account Repository       (NEW)                  | |
+|  |  - Transfer Repository      (NEW)                  | |
+|  |  - Notification Repository  (NEW)                  | |
+|  |  - Scheduled Fund Repository (NEW)                 | |
+|  |  - Income Repository                               | |
+|  |  - Expense Repository                              | |
+|  |  - Category Repository                             | |
+|  |  - Budget Repository                               | |
+|  +----------------------------------------------------+ |
++---------------------------------------------------------+
+                            |
+                            v
++---------------------------------------------------------+
+|                PostgreSQL Database                      |
+|  - accounts             (NEW)                           |
+|  - account_transfers    (NEW)                           |
+|  - scheduled_funds      (NEW)                           |
+|  - notification_settings (NEW)                          |
+|  - incomes              (Updated: +account_id)          |
+|  - expenses             (Updated: +account_id)          |
+|  - expense_categories   (Updated: +daily_amount)        |
+|  - category_budgets     (Updated: +days_in_month)       |
+|  - budget_allocations                                   |
+|  - budget_reallocations                                 |
+|  - budget_alerts                                        |
+|  - monthly_reports                                      |
++---------------------------------------------------------+
+                            |
+                            v
++---------------------------------------------------------+
+|              External Services                          |
+|  - OneSignal (Push Notifications)                       |
++---------------------------------------------------------+
 ```
 
 ---
 
 ## 📊 Database Schema
 
-### Table: `incomes`
-Menyimpan semua pemasukan
+### Table: `accounts` (NEW)
+Menyimpan semua akun dana pengguna
+
 ```sql
 id              UUID PRIMARY KEY
-source          VARCHAR(100)      -- "Gaji", "Project X", "Freelance", dll
-amount          DECIMAL(15,2)     -- Jumlah pemasukan
-date            TIMESTAMP         -- Tanggal pemasukan
-description     TEXT              -- Deskripsi opsional
+name            VARCHAR(100) NOT NULL       -- "BCA Payroll", "Dompet", "Tabungan Bali"
+type            VARCHAR(20) NOT NULL        -- "CARD" | "CASH" | "SAVINGS"
+income_type     VARCHAR(30)                 -- HANYA type=CARD: "SALARY"|"PROJECT"|"FREELANCE"|"BUSINESS"|"OTHER"
+balance         DECIMAL(15,2) DEFAULT 0    -- Saldo terkini
+color           VARCHAR(10)                 -- Hex color (#4CAF50)
+description     TEXT
+is_active       BOOLEAN DEFAULT true
+-- Khusus SAVINGS:
+goal_amount     DECIMAL(15,2)              -- Target saldo (nullable)
+goal_label      VARCHAR(200)               -- Label tujuan (nullable)
 created_at      TIMESTAMP
 updated_at      TIMESTAMP
 ```
 
-### Table: `expense_categories`
-Master kategori pengeluaran (user-defined)
+**Business Rules:**
+- `income_type` hanya diisi jika `type = CARD`
+- `goal_amount` dan `goal_label` hanya relevan jika `type = SAVINGS`
+- Satu user boleh memiliki banyak `CARD`
+- Archiving (is_active=false) tidak menghapus histori transaksi
+
+---
+
+### Table: `account_transfers` (NEW)
+History semua transfer antar akun
+
+```sql
+id                UUID PRIMARY KEY
+from_account_id   UUID REFERENCES accounts(id) NOT NULL
+to_account_id     UUID REFERENCES accounts(id) NOT NULL
+amount            DECIMAL(15,2) NOT NULL
+note              TEXT
+transfer_date     TIMESTAMP NOT NULL
+created_at        TIMESTAMP
+updated_at        TIMESTAMP
+
+CONSTRAINT chk_different_accounts CHECK (from_account_id <> to_account_id)
+CONSTRAINT chk_amount_positive CHECK (amount > 0)
+```
+
+---
+
+### Table: `scheduled_funds` (NEW)
+Jadwal top-up atau transfer terjadwal (recurring monthly)
+
+```sql
+id                UUID PRIMARY KEY
+account_id        UUID REFERENCES accounts(id) NOT NULL    -- Akun tujuan top-up atau sumber transfer
+from_account_id   UUID REFERENCES accounts(id)             -- Akun sumber (nullable; untuk TOP_UP = null)
+schedule_type     VARCHAR(20) NOT NULL                     -- "TOP_UP" | "TRANSFER"
+amount            DECIMAL(15,2) NOT NULL
+day_of_month      INT NOT NULL                             -- 1-31; 0 = akhir bulan
+description       TEXT
+is_active         BOOLEAN DEFAULT true
+last_executed_at  TIMESTAMP
+next_execute_at   TIMESTAMP NOT NULL                       -- Jadwal eksekusi berikutnya (computed)
+created_at        TIMESTAMP
+updated_at        TIMESTAMP
+
+CONSTRAINT chk_amount CHECK (amount > 0)
+CONSTRAINT chk_day CHECK (day_of_month BETWEEN 0 AND 31)
+```
+
+---
+
+### Table: `notification_settings` (NEW)
+Konfigurasi reminder & notifikasi via OneSignal
+
+```sql
+id                    UUID PRIMARY KEY
+type                  VARCHAR(50) NOT NULL     -- "ALLOCATION_REMINDER"|"BUDGET_ALERT"|"SAVINGS_GOAL"|"SCHEDULED_FUND"
+title                 VARCHAR(200) NOT NULL
+body                  TEXT NOT NULL
+day_of_month          INT NOT NULL             -- Tanggal reminder (1-31), 0 = akhir bulan
+time_of_day           VARCHAR(5) NOT NULL      -- Format "HH:MM" (e.g., "09:00")
+is_enabled            BOOLEAN DEFAULT true
+onesignal_player_id   VARCHAR(200) NOT NULL    -- OneSignal Player/Subscription ID perangkat
+last_sent_at          TIMESTAMP
+created_at            TIMESTAMP
+updated_at            TIMESTAMP
+```
+
+---
+
+### Table: `incomes` (Updated)
+Ditambahkan relasi ke akun sumber dana
+
 ```sql
 id              UUID PRIMARY KEY
-name            VARCHAR(100)      -- "Makan", "Netflix", "Bensin", dll
-type            VARCHAR(50)       -- "SUBSCRIPTION", "DAILY_CONTINUOUS", "USAGE_BASED", "ONE_TIME"
-monthly_budget  DECIMAL(15,2)     -- Budget bulanan untuk kategori ini
-allocation_priority INT           -- Urutan prioritas alokasi (1 = tertinggi)
-is_active       BOOLEAN           -- Kategori aktif atau tidak
-metadata        JSONB             -- Extra config: {daily_amount: 40000, refill_count: 5, etc}
+account_id      UUID REFERENCES accounts(id) NOT NULL   -- NEW
+source          VARCHAR(100) NOT NULL
+amount          DECIMAL(15,2) NOT NULL
+date            TIMESTAMP NOT NULL
+description     TEXT
 created_at      TIMESTAMP
 updated_at      TIMESTAMP
 ```
 
-### Table: `category_budgets`
-Budget real-time per kategori (reset setiap bulan)
+---
+
+### Table: `expenses` (Updated)
+Ditambahkan relasi ke akun sumber dana
+
 ```sql
 id              UUID PRIMARY KEY
-category_id     UUID REFERENCES expense_categories(id)
-month           INT               -- 1-12
-year            INT               -- 2026, 2027, etc
-allocated_amount DECIMAL(15,2)    -- Total budget yang sudah dialokasikan
-spent_amount    DECIMAL(15,2)     -- Total yang sudah dipakai
-remaining_amount DECIMAL(15,2)    -- Sisa budget (allocated - spent)
+account_id      UUID REFERENCES accounts(id) NOT NULL   -- NEW
+category_id     UUID REFERENCES expense_categories(id) NOT NULL
+amount          DECIMAL(15,2) NOT NULL
+date            TIMESTAMP NOT NULL
+description     TEXT
 created_at      TIMESTAMP
 updated_at      TIMESTAMP
+```
+
+---
+
+### Table: `expense_categories` (Updated)
+Master kategori pengeluaran — ditambahkan daily_amount
+
+```sql
+id                  UUID PRIMARY KEY
+name                VARCHAR(100) NOT NULL
+type                VARCHAR(50) NOT NULL       -- SUBSCRIPTION | DAILY_CONTINUOUS | USAGE_BASED | ONE_TIME
+monthly_budget      DECIMAL(15,2) NOT NULL     -- Default; untuk DAILY_CONTINUOUS di-override tiap bulan
+daily_amount        DECIMAL(15,2)              -- NEW: HANYA DAILY_CONTINUOUS; nominal per hari
+allocation_priority INT NOT NULL DEFAULT 1
+is_active           BOOLEAN DEFAULT true
+metadata            JSONB
+created_at          TIMESTAMP
+updated_at          TIMESTAMP
+```
+
+**Logika DAILY_CONTINUOUS Budget Calculation:**
+```
+effective_monthly_budget = daily_amount x days_in_month(month, year)
+
+Contoh kategori "Makan", daily_amount = 40000:
+  - Januari 2026  (31 hari): 40000 x 31 = Rp 1.240.000
+  - Februari 2026 (28 hari): 40000 x 28 = Rp 1.120.000
+  - Februari 2028 (29 hari): 40000 x 29 = Rp 1.160.000
+  - Maret 2026    (31 hari): 40000 x 31 = Rp 1.240.000
+```
+
+---
+
+### Table: `category_budgets` (Updated)
+Budget real-time per kategori per bulan — ditambahkan snapshot harian
+
+```sql
+id                    UUID PRIMARY KEY
+category_id           UUID REFERENCES expense_categories(id) NOT NULL
+month                 INT NOT NULL
+year                  INT NOT NULL
+allocated_amount      DECIMAL(15,2) NOT NULL DEFAULT 0
+spent_amount          DECIMAL(15,2) NOT NULL DEFAULT 0
+remaining_amount      DECIMAL(15,2) NOT NULL DEFAULT 0
+effective_daily_amount DECIMAL(15,2)         -- NEW: snapshot daily_amount saat alokasi (DAILY_CONTINUOUS)
+days_in_month         INT                    -- NEW: snapshot jumlah hari bulan tsb (DAILY_CONTINUOUS)
+created_at            TIMESTAMP
+updated_at            TIMESTAMP
 
 UNIQUE(category_id, month, year)
 ```
 
-### Table: `expenses`
-Detail setiap pengeluaran
-```sql
-id              UUID PRIMARY KEY
-category_id     UUID REFERENCES expense_categories(id)
-amount          DECIMAL(15,2)     -- Jumlah pengeluaran
-date            TIMESTAMP         -- Tanggal pengeluaran
-description     TEXT              -- Deskripsi (misal: "Isi bensin Shell", "Makan siang Warteg")
-created_at      TIMESTAMP
-updated_at      TIMESTAMP
-```
+---
 
 ### Table: `budget_allocations`
 History alokasi budget dari income ke kategori
+
 ```sql
-id              UUID PRIMARY KEY
-income_id       UUID REFERENCES incomes(id)
-category_id     UUID REFERENCES expense_categories(id)
-allocated_amount DECIMAL(15,2)    -- Jumlah yang dialokasikan
-month           INT
-year            INT
-created_at      TIMESTAMP
+id               UUID PRIMARY KEY
+income_id        UUID REFERENCES incomes(id)
+category_id      UUID REFERENCES expense_categories(id)
+allocated_amount DECIMAL(15,2) NOT NULL
+month            INT NOT NULL
+year             INT NOT NULL
+created_at       TIMESTAMP
 ```
 
-### Table: `budget_reallocations` (NEW)
-History manual realokasi budget antar kategori
+---
+
+### Table: `budget_reallocations`
+Manual realokasi budget antar kategori
+
 ```sql
 id                  UUID PRIMARY KEY
 from_category_id    UUID REFERENCES expense_categories(id)
 to_category_id      UUID REFERENCES expense_categories(id)
-amount              DECIMAL(15,2)     -- Jumlah yang direalokasi
-reason              TEXT              -- Alasan realokasi
-month               INT
-year                INT
+amount              DECIMAL(15,2) NOT NULL
+reason              TEXT
+month               INT NOT NULL
+year                INT NOT NULL
 created_at          TIMESTAMP
 ```
 
-### Table: `budget_alerts` (NEW)
-Konfigurasi alert per kategori
-```sql
-id              UUID PRIMARY KEY
-category_id     UUID REFERENCES expense_categories(id)
-threshold_percentage INT           -- Alert ketika usage mencapai % ini (misal: 80)
-is_enabled      BOOLEAN           -- Alert aktif atau tidak
-last_triggered  TIMESTAMP         -- Kapan terakhir alert triggered
-created_at      TIMESTAMP
-updated_at      TIMESTAMP
+---
 
-UNIQUE(category_id)
+### Table: `budget_alerts`
+Konfigurasi alert per kategori
+
+```sql
+id                    UUID PRIMARY KEY
+category_id           UUID REFERENCES expense_categories(id) UNIQUE
+threshold_percentage  INT NOT NULL DEFAULT 80
+is_enabled            BOOLEAN DEFAULT true
+last_triggered        TIMESTAMP
+created_at            TIMESTAMP
+updated_at            TIMESTAMP
 ```
 
-### Table: `monthly_reports` (NEW)
-Snapshot summary keuangan per bulan
+---
+
+### Table: `monthly_reports`
+Snapshot keuangan per bulan
+
 ```sql
 id                  UUID PRIMARY KEY
-month               INT
-year                INT
+month               INT NOT NULL
+year                INT NOT NULL
 total_income        DECIMAL(15,2)
 total_allocated     DECIMAL(15,2)
 total_spent         DECIMAL(15,2)
 total_remaining     DECIMAL(15,2)
 unallocated         DECIMAL(15,2)
-savings             DECIMAL(15,2)     -- Income - Total Spent
-top_category        VARCHAR(100)      -- Kategori dengan spending tertinggi
+savings             DECIMAL(15,2)
+top_category        VARCHAR(100)
 top_category_amount DECIMAL(15,2)
 generated_at        TIMESTAMP
 created_at          TIMESTAMP
@@ -219,2006 +417,1315 @@ UNIQUE(month, year)
 
 ## 🔄 Flow Diagram
 
-### Flow 1: Pemasukan & Auto-Allocation
+### Flow 1: Buat Akun Baru
 ```
-┌─────────────────┐
-│  User Input     │
-│  Income Data    │
-│  - Source       │
-│  - Amount       │
-│  - Date         │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Simpan ke table `incomes`      │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Get semua active expense_categories    │
-│  (is_active = true)                     │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Hitung alokasi per kategori            │
-│  Berdasarkan monthly_budget ratio       │
-│                                          │
-│  Formula:                                │
-│  allocation = (category.monthly_budget / │
-│                total_monthly_budgets) *  │
-│                income.amount             │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Loop setiap kategori:                  │
-│  1. Update/Create category_budgets      │
-│     - allocated_amount += allocation    │
-│     - remaining_amount += allocation    │
-│  2. Insert ke budget_allocations        │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Return success response        │
-│  + Allocation breakdown         │
-└─────────────────────────────────┘
+User Input:
+  - type: CARD | CASH | SAVINGS
+  - name, color, description
+  - income_type (wajib jika CARD)
+  - goal_amount, goal_label (opsional; hanya SAVINGS)
+  - initial_balance (opsional, default 0)
+            |
+            v
+Validasi:
+  - type wajib & valid
+  - income_type wajib jika type=CARD
+  - goal fields hanya valid jika type=SAVINGS
+  - name tidak boleh kosong
+            |
+            v
+INSERT ke `accounts` (is_active=true)
+            |
+            v
+Return created account
 ```
 
-### Flow 2: Catat Pengeluaran
+---
+
+### Flow 2: Top Up Akun (Income ke Akun)
 ```
-┌─────────────────┐
-│  User Input     │
-│  Expense Data   │
-│  - Category     │
-│  - Amount       │
-│  - Date         │
-│  - Description  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Validasi:                      │
-│  - Cek category exists & active │
-│  - Cek budget mencukupi         │
-│  (remaining_amount >= amount)   │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Simpan ke table `expenses`     │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Update category_budgets:       │
-│  - spent_amount += amount       │
-│  - remaining_amount -= amount   │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Return success response        │
-│  + Updated budget info          │
-└─────────────────────────────────┘
+User Input:
+  - account_id
+  - amount, source, date, description
+            |
+            v
+Validasi:
+  - account exists & is_active = true
+  - amount > 0
+            |
+            v
+BEGIN TRANSACTION
+            |
+            v
+INSERT ke `incomes` (account_id, source, amount, date, description)
+            |
+            v
+UPDATE accounts SET balance = balance + amount WHERE id = account_id
+            |
+            v
+Cek: account.type=CARD AND account.income_type=SALARY?
+  |                                                 |
+  YES                                              NO
+  |                                                 |
+  v                                                 v
+Cek: sudah ada                            COMMIT, return income
+budget_allocations untuk                  + updated account balance
+bulan ini dari akun ini?
+  |                        |
+  BELUM ADA               SUDAH ADA
+  |                        |
+  v                        v
+Trigger Flow 3            COMMIT, return income
+(Auto-Allocation)         + warning: "Alokasi bulan ini
+                           sudah ada. Lakukan realokasi
+                           manual jika diperlukan."
 ```
 
-### Flow 3: Tambah/Edit Kategori
+---
+
+### Flow 3: Auto-Allocation dari Gaji (SALARY Card Income)
 ```
-┌─────────────────┐
-│  User Input     │
-│  Category Data  │
-│  - Name         │
-│  - Type         │
-│  - Budget       │
-│  - Priority     │
-│  - Metadata     │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Validasi input                 │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Simpan ke expense_categories   │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Return created category        │
-└─────────────────────────────────┘
+Input: income (sudah tersimpan), month, year
+            |
+            v
+Ambil semua expense_categories WHERE is_active = true
+            |
+            v
+Hitung effective_monthly_budget per kategori:
+  - type = DAILY_CONTINUOUS:
+      days = days_in_month(month, year)
+      effective_budget = daily_amount x days
+  - Lainnya: monthly_budget (nilai tetap)
+            |
+            v
+total_effective_budget = SUM(effective_budget semua kategori)
+            |
+            v
+Loop setiap kategori:
+  allocation_amount = (cat.effective_budget / total_effective_budget) x income.amount
+
+  Apakah category_budget (category_id, month, year) sudah ada?
+  |                        |
+  BELUM                   SUDAH
+  |                        |
+  v                        v
+CREATE category_budget    UPDATE category_budget
+  allocated = allocation    allocated += allocation
+  spent = 0                 remaining += allocation
+  remaining = allocation
+  effective_daily_amount (jika DAILY_CONTINUOUS)
+  days_in_month (jika DAILY_CONTINUOUS)
+
+  INSERT ke budget_allocations
+    (income_id, category_id, allocation_amount, month, year)
+            |
+            v
+COMMIT
+            |
+            v
+Return allocation breakdown per kategori
 ```
 
-### Flow 4: Budget Reallocation (Manual Adjustment)
+---
+
+### Flow 4: Catat Pengeluaran (Spent dari Akun)
 ```
-┌─────────────────┐
-│  User Input     │
-│  - From Cat ID  │
-│  - To Cat ID    │
-│  - Amount       │
-│  - Reason       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Validasi:                              │
-│  - From category punya budget cukup?    │
-│  - Both categories aktif?               │
-│  - Amount > 0?                          │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Update category_budgets:               │
-│  - FROM: remaining -= amount            │
-│  - TO: remaining += amount              │
-│  - TO: allocated += amount              │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Insert ke budget_reallocations         │
-│  (history tracking)                     │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Return success response        │
-│  + Updated budget info          │
-└─────────────────────────────────┘
+User Input:
+  - account_id, category_id, amount, date, description
+            |
+            v
+Validasi:
+  - account exists & is_active = true
+  - account.balance >= amount  (HARD: error jika tidak cukup)
+  - category exists & is_active = true
+  - category_budget.remaining >= amount  (SOFT: warning jika tidak cukup, bisa lanjut)
+            |
+            v
+BEGIN TRANSACTION
+            |
+            v
+INSERT ke `expenses` (account_id, category_id, amount, date, description)
+            |
+            v
+UPDATE accounts SET balance = balance - amount WHERE id = account_id
+            |
+            v
+UPDATE category_budgets SET
+  spent_amount = spent_amount + amount,
+  remaining_amount = remaining_amount - amount
+WHERE category_id = ? AND month = ? AND year = ?
+            |
+            v
+COMMIT
+            |
+            v
+Cek alert threshold:
+  usage_pct = (spent_amount / allocated_amount) x 100
+  Jika usage_pct >= threshold_percentage:
+    Update budget_alerts.last_triggered = NOW()
+    Return alert dalam response
+            |
+            v
+Return expense + account.balance + budget_remaining + alert (if any)
 ```
 
-### Flow 5: Monthly Budget Reset (Automated)
+---
+
+### Flow 5: Transfer Antar Akun
 ```
-┌─────────────────────────────────┐
-│  Trigger: Awal bulan baru       │
-│  (Cron job / Manual trigger)    │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Get all category_budgets bulan lalu    │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Loop setiap kategori:                  │
-│  - Check rollover policy                │
-│  - If rollover: carry remaining         │
-│  - If reset: discard remaining          │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Generate monthly_report untuk          │
-│  bulan yang baru selesai                │
-│  (snapshot performa keuangan)           │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Create new category_budgets            │
-│  untuk bulan baru dengan:               │
-│  - allocated_amount = 0 (atau rollover) │
-│  - spent_amount = 0                     │
-│  - remaining_amount = 0 (atau rollover) │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Log reset completion           │
-└─────────────────────────────────┘
+User Input:
+  - from_account_id, to_account_id, amount, note, transfer_date
+            |
+            v
+Validasi:
+  - from_account_id != to_account_id  (error jika sama)
+  - from_account exists & is_active = true
+  - to_account exists & is_active = true
+  - from_account.balance >= amount  (error jika tidak cukup)
+  - amount > 0
+            |
+            v
+BEGIN TRANSACTION
+            |
+            v
+UPDATE accounts SET balance = balance - amount WHERE id = from_account_id
+UPDATE accounts SET balance = balance + amount WHERE id = to_account_id
+            |
+            v
+INSERT ke account_transfers
+  (from_account_id, to_account_id, amount, note, transfer_date)
+            |
+            v
+COMMIT
+            |
+            v
+Return transfer record + from_account.balance + to_account.balance
 ```
 
-### Flow 6: Budget Alert Check
+---
+
+### Flow 6: Archive Akun
 ```
-┌─────────────────────────────────┐
-│  After expense recorded         │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Get budget_alert config                │
-│  untuk category yang bersangkutan       │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Hitung current usage percentage:       │
-│  usage_pct = (spent/allocated) * 100    │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  If usage_pct >= threshold_percentage:  │
-│  - Trigger alert (push notif/email)     │
-│  - Update last_triggered timestamp      │
-│  - Return alert in response             │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Continue normal flow           │
-└─────────────────────────────────┘
+User request: POST /accounts/:id/archive
+Optional body: { "transfer_remaining_to": "account_uuid" }
+            |
+            v
+Validasi:
+  - account exists & is_active = true
+  - Jika account.balance > 0 DAN transfer_remaining_to tidak diisi:
+      Return 400: "Pindahkan saldo terlebih dahulu atau sertakan transfer_remaining_to"
+            |
+            v
+Jika account.balance > 0 DAN transfer_remaining_to diisi:
+  - Validasi target account aktif
+  - Jalankan Flow 5 (Transfer) sejumlah sisa saldo
+            |
+            v
+BEGIN TRANSACTION
+UPDATE accounts SET is_active = false WHERE id = account_id
+COMMIT
+            |
+            v
+Return 200 OK. Semua histori transaksi tetap tersimpan.
+```
+
+---
+
+### Flow 7: Scheduled Fund Execution (Cron)
+```
+Cron trigger: setiap hari pukul 08:00
+            |
+            v
+SELECT * FROM scheduled_funds
+  WHERE is_active = true
+    AND (day_of_month = DAY(TODAY) OR (day_of_month = 0 AND TODAY = last_day_of_month))
+            |
+            v
+Loop setiap scheduled_fund:
+  |
+  schedule_type = TOP_UP?                 schedule_type = TRANSFER?
+  |                                       |
+  v                                       v
+Jalankan Flow 2 (Top Up)           Jalankan Flow 5 (Transfer)
+account_id = target account        from=from_account, to=account_id
+  |                                       |
+  v                                       v
+UPDATE scheduled_funds:
+  last_executed_at = NOW()
+  next_execute_at  = same day next month
+            |
+            v
+Kirim push notifikasi OneSignal:
+  Jika sukses: "Scheduled fund berhasil: +Rp X ke akun Y"
+  Jika gagal (saldo kurang): "Scheduled fund gagal: saldo tidak cukup di akun Z"
+```
+
+---
+
+### Flow 8: OneSignal Notification Delivery (Cron)
+```
+Cron trigger: setiap menit (check time window)
+            |
+            v
+SELECT * FROM notification_settings
+  WHERE is_enabled = true
+    AND (day_of_month = DAY(TODAY) OR (day_of_month = 0 AND TODAY = last_day_of_month))
+    AND time_of_day BETWEEN NOW()-5min AND NOW()+5min
+    AND (last_sent_at IS NULL OR DATE(last_sent_at) != TODAY)
+            |
+            v
+Loop setiap notification_setting:
+  POST https://onesignal.com/api/v1/notifications
+  Headers: Authorization: Basic {ONESIGNAL_REST_API_KEY}
+  Body: {
+    "app_id": ONESIGNAL_APP_ID,
+    "include_player_ids": [setting.onesignal_player_id],
+    "headings": {"en": setting.title},
+    "contents": {"en": setting.body}
+  }
+            |
+            v
+  UPDATE notification_settings SET last_sent_at = NOW()
+```
+
+---
+
+### Flow 9: DAILY_CONTINUOUS Budget Per Bulan
+```
+Saat alokasi budget bulanan dijalankan (Flow 3):
+            |
+            v
+Untuk setiap kategori dengan type = DAILY_CONTINUOUS:
+  days = jumlah_hari_bulan(month, year)
+       = 28 | 29 | 30 | 31
+
+  effective_budget = category.daily_amount x days
+
+  Simpan ke category_budgets:
+    allocated_amount      = proportional_share_of_income
+    effective_daily_amount = category.daily_amount (snapshot)
+    days_in_month          = days (snapshot)
+
+Catatan: monthly_budget di expense_categories TIDAK dipakai
+         untuk DAILY_CONTINUOUS; hanya daily_amount yang jadi acuan.
+Contoh "Makan" daily_amount = 40000:
+  Jan 2026 (31 hari): Rp 1.240.000 total budget allocated proportionally
+  Feb 2026 (28 hari): Rp 1.120.000
+  Feb 2028 (29 hari): Rp 1.160.000 (tahun kabisat)
 ```
 
 ---
 
 ## 🔌 API Endpoints
 
-### Income APIs
+### Account APIs (NEW)
+
 ```
-POST   /api/v1/incomes
+POST   /api/v1/accounts
   Body: {
-    "source": "Gaji Januari",
-    "amount": 8000000,
-    "date": "2026-01-25T00:00:00Z",
-    "description": "Gaji bulanan"
+    "name": "BCA Payroll",
+    "type": "CARD",
+    "income_type": "SALARY",      -- wajib jika type=CARD
+    "balance": 0,
+    "color": "#4CAF50",
+    "description": "Rekening gaji bulanan"
+                                  -- Untuk SAVINGS saja:
+    "goal_amount": 10000000,
+    "goal_label": "Liburan Bali"
   }
+  Validation:
+    - type wajib: CARD | CASH | SAVINGS
+    - income_type wajib jika type=CARD
+    - goal fields hanya valid jika type=SAVINGS
+  Response: { "success": true, "data": { ...account } }
+
+GET    /api/v1/accounts
+  Query: ?type=CARD&is_active=true
+  Response: { "success": true, "data": [ ...accounts ] }
+
+GET    /api/v1/accounts/summary
   Response: {
-    "income": {...},
-    "allocations": [
-      {"category": "Makan", "allocated": 1240000},
-      {"category": "Netflix", "allocated": 120000},
-      ...
-    ]
+    "accounts": [
+      { "id": "...", "name": "BCA Payroll", "type": "CARD", "income_type": "SALARY", "balance": 5000000 },
+      { "id": "...", "name": "Dompet", "type": "CASH", "balance": 500000 },
+      { "id": "...", "name": "Tabungan Bali", "type": "SAVINGS", "balance": 5000000,
+        "goal_amount": 10000000, "goal_label": "Liburan Bali", "progress_percentage": 50.0 }
+    ],
+    "total_balance": 10500000
   }
 
-GET    /api/v1/incomes?month=1&year=2026&page=1&limit=10&sort=date_desc
-  Query params:
-    - month, year: filter by period
-    - page, limit: pagination (default: page=1, limit=20)
-    - sort: date_asc, date_desc, amount_asc, amount_desc
-    - source: filter by source name (partial match)
+GET    /api/v1/accounts/:id
   Response: {
-    "data": [{...}, {...}],
-    "pagination": {
-      "page": 1,
-      "limit": 10,
-      "total": 45,
-      "total_pages": 5
+    "account": { ...account },
+    "balance_summary": {
+      "current_balance": 5000000,
+      "total_income_this_month": 8000000,
+      "total_spent_this_month": 1500000,
+      "total_transferred_out": 1500000,
+      "total_transferred_in": 0
+    },
+    "savings_progress": {       -- only if type=SAVINGS
+      "goal_amount": 10000000,
+      "goal_label": "Liburan Bali",
+      "progress_percentage": 50.0,
+      "remaining_to_goal": 5000000
     }
   }
 
-GET    /api/v1/incomes/:id
-  Response: {
-    "id": "uuid",
-    "source": "Gaji Januari",
-    "amount": 8000000,
-    "date": "2026-01-25T00:00:00Z",
-    "description": "Gaji bulanan",
-    "allocations": [...],  // List alokasi yang terjadi
-    "created_at": "...",
-    "updated_at": "..."
-  }
-
-PATCH  /api/v1/incomes/:id
+PATCH  /api/v1/accounts/:id
   Body: {
-    "source": "Gaji Januari + Bonus",
-    "amount": 10000000,
-    "date": "2026-01-25T00:00:00Z",
-    "description": "Updated"
+    "name": "BCA Updated",
+    "color": "#2196F3",
+    "description": "...",
+    "goal_amount": 15000000,    -- only SAVINGS
+    "goal_label": "Beli Motor"  -- only SAVINGS
   }
-  Note: Akan re-calculate allocations jika amount berubah
+  Note: type dan income_type TIDAK bisa diubah setelah dibuat
+
+POST   /api/v1/accounts/:id/topup
+  Body: {
+    "amount": 8000000,
+    "source": "Gaji Maret 2026",
+    "date": "2026-03-25T00:00:00Z",
+    "description": "Gaji bulanan"
+  }
   Response: {
-    "income": {...},
-    "allocations_adjusted": [...]
+    "income": { ...income_object },
+    "account": { "id": "...", "name": "BCA Payroll", "balance": 8000000 },
+    "auto_allocation": {
+      "triggered": true,
+      "warning": null,           -- atau "Alokasi bulan ini sudah ada."
+      "allocations": [
+        { "category_id": "...", "category_name": "Makan", "allocated": 1120000, "days_in_month": 28 },
+        { "category_id": "...", "category_name": "Netflix", "allocated": 120000 }
+      ],
+      "total_allocated": 2200000,
+      "unallocated": 5800000
+    }
   }
 
-DELETE /api/v1/incomes/:id
-  Note: Soft delete + rollback allocations yang sudah terjadi
+POST   /api/v1/accounts/:id/spent
+  Body: {
+    "category_id": "uuid",
+    "amount": 35000,
+    "date": "2026-03-10T12:00:00Z",
+    "description": "Isi bensin Shell"
+  }
   Response: {
-    "message": "Income deleted and allocations rolled back",
-    "affected_categories": ["Makan", "Netflix", ...]
+    "expense": { ...expense_object },
+    "account": { "id": "...", "balance": 7965000 },
+    "budget_remaining": 140000,
+    "alert": null | {
+      "level": "warning",           -- warning (>=threshold) | critical (>=100%)
+      "message": "Budget bensin sudah terpakai 85%",
+      "percentage_used": 85.0
+    }
+  }
+
+POST   /api/v1/accounts/:id/transfer
+  Body: {
+    "to_account_id": "uuid",
+    "amount": 500000,
+    "note": "Uang harian ke dompet",
+    "transfer_date": "2026-03-10T00:00:00Z"
+  }
+  Response: {
+    "transfer": { ...transfer_object },
+    "from_account": { "id": "...", "name": "BCA Payroll", "balance": 7465000 },
+    "to_account":   { "id": "...", "name": "Dompet", "balance": 500000 }
+  }
+
+POST   /api/v1/accounts/:id/archive
+  Body: { "transfer_remaining_to": "account_uuid" }   -- opsional; wajib jika balance > 0
+  Response: { "success": true, "message": "Account archived successfully" }
+
+GET    /api/v1/accounts/:id/transfers
+  Query: ?page=1&limit=20&month=3&year=2026
+  Response: {
+    "data": [ ...transfers dengan from_account dan to_account populated ],
+    "pagination": { ... }
   }
 ```
 
-### Expense Category APIs
+---
+
+### Transfer APIs (NEW)
+
+```
+GET    /api/v1/transfers
+  Query: ?month=3&year=2026&account_id=uuid&page=1&limit=20
+  Response: {
+    "data": [
+      {
+        "id": "uuid",
+        "from_account": { "id": "...", "name": "BCA Payroll", "type": "CARD" },
+        "to_account":   { "id": "...", "name": "Dompet", "type": "CASH" },
+        "amount": 500000,
+        "note": "Uang harian",
+        "transfer_date": "2026-03-10T00:00:00Z",
+        "created_at": "..."
+      }
+    ],
+    "pagination": { ... },
+    "summary": { "total_transferred": 1000000, "count": 2 }
+  }
+
+GET    /api/v1/transfers/:id
+  Response: { "success": true, "data": { ...transfer } }
+
+DELETE /api/v1/transfers/:id
+  Note: Hanya bisa di-cancel dalam 24 jam setelah dibuat. Rollback kedua saldo akun.
+  Response: { "success": true, "message": "Transfer cancelled and balances restored" }
+```
+
+---
+
+### Statistics APIs (NEW)
+
+```
+GET    /api/v1/statistics/monthly?year=2026
+  Response: {
+    "year": 2026,
+    "monthly": [
+      {
+        "month": 1,
+        "month_label": "January",
+        "total_income": 8000000,
+        "total_expense": 1500000,
+        "net_balance": 6500000,
+        "expense_by_category": [
+          { "category_id": "...", "category_name": "Makan", "amount": 1120000 },
+          { "category_id": "...", "category_name": "Bensin", "amount": 175000 }
+        ]
+      },
+      { "month": 2, ... },
+      ...
+    ],
+    "summary": {
+      "total_income_ytd": 16000000,
+      "total_expense_ytd": 3100000,
+      "avg_monthly_income": 8000000,
+      "avg_monthly_expense": 1550000,
+      "highest_income_month": "January",
+      "highest_expense_month": "February"
+    }
+  }
+
+GET    /api/v1/statistics/overview?month=3&year=2026
+  Response: {
+    "period": "March 2026",
+    "income": {
+      "total": 8000000,
+      "by_account": [
+        { "account_id": "...", "account_name": "BCA Payroll", "type": "CARD", "amount": 8000000 }
+      ]
+    },
+    "expense": {
+      "total": 1200000,
+      "by_category": [
+        { "category_id": "...", "category_name": "Makan", "amount": 840000 },
+        { "category_id": "...", "category_name": "Bensin", "amount": 140000 }
+      ],
+      "by_account": [
+        { "account_id": "...", "account_name": "BCA Payroll", "amount": 900000 },
+        { "account_id": "...", "account_name": "Dompet", "amount": 300000 }
+      ]
+    },
+    "transfers": {
+      "total_out": 500000,
+      "total_in": 0,
+      "count": 1
+    },
+    "accounts": [
+      { "name": "BCA Payroll", "type": "CARD", "balance": 5800000 },
+      { "name": "Dompet", "type": "CASH", "balance": 200000 },
+      { "name": "Tabungan Bali", "type": "SAVINGS", "balance": 5000000,
+        "goal_amount": 10000000, "progress_percentage": 50.0 }
+    ],
+    "total_balance": 11000000,
+    "savings_rate": 85.0
+  }
+```
+
+---
+
+### Scheduled Fund APIs (NEW)
+
+```
+POST   /api/v1/scheduled-funds
+  Body: {
+    "account_id": "uuid",          -- Akun tujuan
+    "from_account_id": "uuid",     -- Akun sumber (wajib jika schedule_type=TRANSFER)
+    "schedule_type": "TRANSFER",   -- TOP_UP | TRANSFER
+    "amount": 1000000,
+    "day_of_month": 25,            -- 1-31 atau 0=akhir bulan
+    "description": "Auto transfer ke tabungan"
+  }
+  Response: {
+    "scheduled_fund": { ...object },
+    "next_execute_at": "2026-04-25T08:00:00Z"
+  }
+
+GET    /api/v1/scheduled-funds
+  Response: [ ...scheduled_funds ]
+
+PATCH  /api/v1/scheduled-funds/:id
+  Body: { "amount": 1500000, "day_of_month": 28, "is_active": false }
+
+DELETE /api/v1/scheduled-funds/:id
+```
+
+---
+
+### Notification Settings APIs (NEW)
+
+```
+POST   /api/v1/notifications/register-device
+  Body: { "onesignal_player_id": "device-subscription-id" }
+  Note: Register Player ID perangkat. Digunakan untuk semua notifikasi.
+  Response: { "success": true }
+
+POST   /api/v1/notifications/settings
+  Body: {
+    "type": "ALLOCATION_REMINDER",     -- ALLOCATION_REMINDER|BUDGET_ALERT|SAVINGS_GOAL|SCHEDULED_FUND
+    "title": "Waktunya Set Alokasi",
+    "body": "Gaji sudah masuk, jangan lupa set alokasi budget!",
+    "day_of_month": 25,
+    "time_of_day": "09:00",
+    "is_enabled": true,
+    "onesignal_player_id": "player-id"
+  }
+  Response: { "success": true, "data": { ...notification_setting } }
+
+GET    /api/v1/notifications/settings
+GET    /api/v1/notifications/settings/:id
+PATCH  /api/v1/notifications/settings/:id
+DELETE /api/v1/notifications/settings/:id
+
+POST   /api/v1/notifications/test
+  Body: { "onesignal_player_id": "...", "title": "Test", "body": "Hello!" }
+  Note: Kirim test notification langsung ke device via OneSignal
+  Response: { "success": true, "message": "Test notification sent" }
+```
+
+---
+
+### Income APIs (Updated)
+
+```
+POST   /api/v1/incomes
+  Body: {
+    "account_id": "uuid",         -- NEW: Wajib
+    "source": "Gaji Maret",
+    "amount": 8000000,
+    "date": "2026-03-25T00:00:00Z",
+    "description": "Gaji bulanan"
+  }
+  Note: Ini adalah endpoint manual (tidak update saldo akun).
+        Gunakan POST /accounts/:id/topup untuk operasi normal + update saldo.
+
+GET    /api/v1/incomes?account_id=uuid&month=3&year=2026&page=1&limit=10&sort=date_desc
+GET    /api/v1/incomes/:id
+PATCH  /api/v1/incomes/:id    -- Update income + recalculate allocations
+DELETE /api/v1/incomes/:id    -- Rollback allocations + restore account balance
+```
+
+---
+
+### Expense APIs (Updated)
+
+```
+POST   /api/v1/expenses
+  Body: {
+    "account_id": "uuid",         -- NEW: Wajib
+    "category_id": "uuid",
+    "amount": 35000,
+    "date": "2026-03-10T12:00:00Z",
+    "description": "Isi bensin Shell"
+  }
+  Note: Ini adalah endpoint manual (tidak update saldo akun).
+        Gunakan POST /accounts/:id/spent untuk operasi normal + update saldo.
+
+GET    /api/v1/expenses?account_id=uuid&category_id=uuid&month=3&year=2026&page=1&limit=20
+GET    /api/v1/expenses/:id
+PATCH  /api/v1/expenses/:id    -- Update expense + adjust budget
+DELETE /api/v1/expenses/:id    -- Restore budget + restore account balance
+```
+
+---
+
+### Category APIs (Updated)
+
 ```
 POST   /api/v1/categories
   Body: {
-    "name": "Netflix",
-    "type": "SUBSCRIPTION",
-    "monthly_budget": 120000,
+    "name": "Makan",
+    "type": "DAILY_CONTINUOUS",
+    "daily_amount": 40000,         -- NEW: wajib jika type=DAILY_CONTINUOUS
+    "monthly_budget": 0,           -- Di-override otomatis untuk DAILY_CONTINUOUS
     "allocation_priority": 1,
     "metadata": {}
   }
 
 GET    /api/v1/categories
-  Response: [{...}, {...}]
+  Response: [{
+    ...category,
+    "effective_monthly_budget": 1120000,  -- Dihitung dari daily x days bulan ini
+    "days_in_month": 28
+  }]
 
 GET    /api/v1/categories/:id
-  Response: {...}
-
 PATCH  /api/v1/categories/:id
-  Body: {
-    "name": "Netflix Premium",
-    "monthly_budget": 150000
-  }
-
-DELETE /api/v1/categories/:id
-  (Soft delete: set is_active = false)
+DELETE /api/v1/categories/:id   -- Soft delete (is_active=false)
 ```
 
-### Transaction APIs (Combined History)
+---
+
+### Transaction APIs (Updated)
+
 ```
-GET    /api/v1/transactions?month=2&year=2026&page=1&limit=20
-  Query params:
-    - month, year: filter by period
-    - start_date, end_date: flexible date range
-    - type: income / expense / all (default: all)
-    - category_id: filter by category (for expenses)
-    - page, limit: pagination
-    - sort: date_asc, date_desc, amount_asc, amount_desc
+GET    /api/v1/transactions
+  Query: ?month=3&year=2026&type=all&account_id=uuid&category_id=uuid&page=1&limit=20&sort=date_desc
+  type: all | income | expense | transfer
   Response: {
     "data": [
-      {
-        "id": "uuid",
-        "type": "income",
-        "source": "Gaji Februari",
-        "amount": 8000000,
-        "date": "2026-02-01T00:00:00Z",
-        "description": "Gaji bulanan"
-      },
-      {
-        "id": "uuid",
-        "type": "expense",
-        "category": {...},
-        "amount": 35000,
-        "date": "2026-02-05T12:00:00Z",
-        "description": "Isi bensin Shell"
-      },
-      ...
+      { "type": "income",   "account": {...}, "source": "Gaji", "amount": 8000000, "date": "..." },
+      { "type": "expense",  "account": {...}, "category": {...}, "amount": 35000, "date": "..." },
+      { "type": "transfer", "from_account": {...}, "to_account": {...}, "amount": 500000, "date": "..." }
     ],
-    "pagination": {...},
+    "pagination": { "page": 1, "limit": 20, "total": 150, "total_pages": 8 },
     "summary": {
       "total_income": 8000000,
-      "total_expense": 485000,
-      "net_balance": 7515000
+      "total_expense": 1200000,
+      "total_transfer_out": 500000,
+      "net_balance": 6800000
     }
   }
 ```
 
-### Analytics APIs
+---
+
+### Budget APIs (tidak berubah)
+
+```
+GET    /api/v1/budgets?month=3&year=2026
+GET    /api/v1/budgets/summary?month=3&year=2026
+POST   /api/v1/budgets/reallocate
+GET    /api/v1/budgets/reallocations?month=3&year=2026
+DELETE /api/v1/budgets/reallocate/:id
+```
+
+---
+
+### Analytics APIs (tidak berubah)
+
 ```
 GET    /api/v1/analytics/spending-pattern?category_id=uuid&months=6
-  Response: {
-    "category": {...},
-    "pattern": [
-      {"month": "2026-01", "spent": 450000, "budget": 1240000, "percentage": 36.3},
-      {"month": "2026-02", "spent": 480000, "budget": 1240000, "percentage": 38.7},
-      ...
-    ],
-    "average_monthly_spending": 465000,
-    "trend": "increasing"  // increasing / decreasing / stable
-  }
-
-GET    /api/v1/analytics/category-comparison?month=2&year=2026
-  Response: {
-    "current_month": {
-      "month": "2026-02",
-      "categories": [
-        {"name": "Makan", "spent": 480000, "percentage_of_total": 26},
-        {"name": "Bensin", "spent": 140000, "percentage_of_total": 7.6},
-        ...
-      ],
-      "total_spent": 1850000
-    },
-    "previous_month": {
-      "month": "2026-01",
-      "categories": [...],
-      "total_spent": 1620000
-    },
-    "changes": [
-      {"category": "Makan", "change_amount": 30000, "change_percentage": 6.7},
-      ...
-    ]
-  }
-
-GET    /api/v1/analytics/top-spending?month=2&year=2026&limit=5
-  Response: [
-    {"category": "Makan", "amount": 480000, "count": 14, "avg_per_transaction": 34285},
-    {"category": "Bensin", "amount": 175000, "count": 5, "avg_per_transaction": 35000},
-    ...
-  ]
-
+GET    /api/v1/analytics/category-comparison?month=3&year=2026
+GET    /api/v1/analytics/top-spending?month=3&year=2026&limit=5
 GET    /api/v1/analytics/budget-performance?year=2026
-  Response: {
-    "year": 2026,
-    "monthly_performance": [
-      {
-        "month": 1,
-        "categories_over_budget": 1,
-        "categories_under_budget": 7,
-        "average_usage_percentage": 68.5
-      },
-      ...
-    ],
-    "category_performance": [
-      {
-        "category": "Makan",
-        "times_over_budget": 0,
-        "times_under_budget": 2,
-        "average_usage": 38.2
-      },
-      ...
-    ]
-  }
 ```
 
-### Report APIs
-```
-GET    /api/v1/reports/monthly?month=2&year=2026
-  Response: {
-    "month": 2,
-    "year": 2026,
-    "income": {
-      "total": 8000000,
-      "sources": [
-        {"source": "Gaji", "amount": 8000000},
-        ...
-      ]
-    },
-    "expenses": {
-      "total": 1850000,
-      "by_category": [
-        {"category": "Makan", "amount": 480000, "count": 14},
-        ...
-      ]
-    },
-    "budget": {
-      "total_allocated": 2200000,
-      "total_spent": 1850000,
-      "total_remaining": 350000,
-      "categories_summary": [...]
-    },
-    "savings": 6150000,
-    "unallocated": 5800000,
-    "top_category": "Makan",
-    "insights": [
-      "Budget makan terpakai 38.7%, masih aman",
-      "Total savings bulan ini: Rp 6.150.000 (76.9%)",
-      ...
-    ]
-  }
+---
 
+### Report APIs (tidak berubah)
+
+```
+GET    /api/v1/reports/monthly?month=3&year=2026
+GET    /api/v1/reports/monthly/export?month=3&year=2026&format=pdf
 GET    /api/v1/reports/yearly?year=2026
-  Response: {
-    "year": 2026,
-    "total_income": 96000000,
-    "total_expenses": 22000000,
-    "total_savings": 74000000,
-    "monthly_breakdown": [...],
-    "category_yearly_summary": [...],
-    "trends": {...}
-  }
-
-GET    /api/v1/reports/monthly/export?month=2&year=2026&format=pdf
-  Query params:
-    - format: pdf / excel
-    - month: 1-12
-    - year: e.g. 2026
-  Response: Binary file download (Content-Disposition: attachment)
-
 GET    /api/v1/reports/yearly/export?year=2026&format=excel
-  Query params:
-    - format: pdf / excel
-    - year: e.g. 2026
-  Response: Binary file download
 ```
 
-> ⚠️ **Note**: Format `csv` tidak tersedia. Hanya `pdf` dan `excel`.
+---
 
-### Alert APIs
+### Alert APIs (tidak berubah)
+
 ```
 GET    /api/v1/alerts?status=active
-  Query params:
-    - status: active / all
-    - month, year: filter by period
-  Response: [
-    {
-      "id": "uuid",
-      "category": {...},
-      "threshold": 80,
-      "current_usage": 85,
-      "status": "triggered",
-      "message": "Budget bensin sudah terpakai 85%",
-      "level": "warning",  // warning / critical
-      "triggered_at": "2026-02-15T10:30:00Z"
-    },
-    ...
-  ]
-
 POST   /api/v1/alerts
-  Body: {
-    "category_id": "uuid",
-    "threshold_percentage": 80,
-    "is_enabled": true
-  }
-  Response: {...}
-
 PATCH  /api/v1/alerts/:id
-  Body: {
-    "threshold_percentage": 75,
-    "is_enabled": true
-  }
-
 DELETE /api/v1/alerts/:id
 ```
 
-> ⚠️ **Note**: `GET /api/v1/alerts/:id` endpoint tidak tersedia. Gunakan `GET /api/v1/alerts` dengan filter.
+---
 
-### Expense APIs
-```
-POST   /api/v1/expenses
-  Body: {
-    "category_id": "uuid",
-    "amount": 35000,
-    "date": "2026-02-17T12:00:00Z",
-    "description": "Isi bensin Shell"
-  }
-  Response: {
-    "expense": {...},
-    "budget_remaining": 140000,
-    "alert": {  // Jika triggered
-      "level": "warning",  // warning / critical
-      "message": "Budget bensin sudah terpakai 85%",
-      "percentage_used": 85
+## 🧩 Go Model Definitions
+
+### models/account.go (NEW)
+
+```go
+package models
+
+import (
+    "time"
+    "github.com/google/uuid"
+    "gorm.io/gorm"
+)
+
+// Account constants
+const (
+    AccountTypeCard    = "CARD"
+    AccountTypeCash    = "CASH"
+    AccountTypeSavings = "SAVINGS"
+
+    CardIncomeTypeSalary    = "SALARY"
+    CardIncomeTypeProject   = "PROJECT"
+    CardIncomeTypeFreelance = "FREELANCE"
+    CardIncomeTypeBusiness  = "BUSINESS"
+    CardIncomeTypeOther     = "OTHER"
+)
+
+type Account struct {
+    ID          uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+    Name        string     `gorm:"size:100;not null" json:"name"`
+    Type        string     `gorm:"size:20;not null" json:"type"`          // CARD|CASH|SAVINGS
+    IncomeType  *string    `gorm:"size:30" json:"income_type,omitempty"`  // SALARY|PROJECT|... (CARD only)
+    Balance     float64    `gorm:"type:decimal(15,2);not null;default:0" json:"balance"`
+    Color       string     `gorm:"size:10" json:"color"`
+    Description string     `gorm:"type:text" json:"description"`
+    IsActive    bool       `gorm:"not null;default:true" json:"is_active"`
+    GoalAmount  *float64   `gorm:"type:decimal(15,2)" json:"goal_amount,omitempty"`  // SAVINGS only
+    GoalLabel   *string    `gorm:"size:200" json:"goal_label,omitempty"`              // SAVINGS only
+    CreatedAt   time.Time  `json:"created_at"`
+    UpdatedAt   time.Time  `json:"updated_at"`
+
+    Incomes   []Income          `gorm:"foreignKey:AccountID" json:"incomes,omitempty"`
+    Expenses  []Expense         `gorm:"foreignKey:AccountID" json:"expenses,omitempty"`
+}
+
+func (a *Account) BeforeCreate(tx *gorm.DB) error {
+    if a.ID == uuid.Nil {
+        a.ID = uuid.New()
     }
-  }
+    return nil
+}
 
-GET    /api/v1/expenses?category_id=uuid&month=2&year=2026&page=1&limit=20&sort=date_desc
-  Query params:
-    - category_id: filter by category
-    - month, year: filter by period
-    - start_date, end_date: flexible date range (format: YYYY-MM-DD)
-    - min_amount, max_amount: filter by amount range
-    - page, limit: pagination
-    - sort: date_asc, date_desc, amount_asc, amount_desc
-    - search: search in description (partial match)
-  Response: {
-    "data": [{...}, {...}],
-    "pagination": {...},
-    "summary": {
-      "total_amount": 485000,
-      "count": 12
+type AccountTransfer struct {
+    ID            uuid.UUID `gorm:"type:uuid;primary_key" json:"id"`
+    FromAccountID uuid.UUID `gorm:"type:uuid;not null" json:"from_account_id"`
+    ToAccountID   uuid.UUID `gorm:"type:uuid;not null" json:"to_account_id"`
+    Amount        float64   `gorm:"type:decimal(15,2);not null" json:"amount"`
+    Note          string    `gorm:"type:text" json:"note"`
+    TransferDate  time.Time `gorm:"not null" json:"transfer_date"`
+    CreatedAt     time.Time `json:"created_at"`
+    UpdatedAt     time.Time `json:"updated_at"`
+
+    FromAccount Account `gorm:"foreignKey:FromAccountID" json:"from_account,omitempty"`
+    ToAccount   Account `gorm:"foreignKey:ToAccountID"   json:"to_account,omitempty"`
+}
+
+func (at *AccountTransfer) BeforeCreate(tx *gorm.DB) error {
+    if at.ID == uuid.Nil {
+        at.ID = uuid.New()
     }
-  }
-
-GET    /api/v1/expenses/:id
-  Response: {
-    "id": "uuid",
-    "category": {...},  // Full category object
-    "amount": 35000,
-    "date": "2026-02-17T12:00:00Z",
-    "description": "Isi bensin Shell",
-    "created_at": "...",
-    "updated_at": "..."
-  }
-
-PATCH  /api/v1/expenses/:id
-  Body: {
-    "category_id": "uuid",  // Optional: bisa pindah kategori
-    "amount": 40000,
-    "date": "2026-02-17T12:00:00Z",
-    "description": "Updated: Isi bensin Shell full tank"
-  }
-  Note: Budget akan disesuaikan (rollback old amount, apply new amount)
-  Response: {
-    "expense": {...},
-    "budget_adjusted": true
-  }
-
-DELETE /api/v1/expenses/:id
-  Note: Soft delete + return budget ke kategori
-  Response: {
-    "message": "Expense deleted and budget restored",
-    "budget_restored": 35000
-  }
+    return nil
+}
 ```
 
-### Budget APIs
-```
-GET    /api/v1/budgets?month=2&year=2026
-  Response: [
-    {
-      "category": {...},
-      "allocated_amount": 1240000,
-      "spent_amount": 480000,
-      "remaining_amount": 760000,
-      "percentage_used": 38.7,
-      "alert_status": "safe",  // safe / warning / critical
-      "alert_threshold": 80
-    },
-    ...
-  ]
+---
 
-GET    /api/v1/budgets/summary?month=2&year=2026
-  Response: {
-    "total_income": 8000000,
-    "total_allocated": 2200000,
-    "total_spent": 1850000,
-    "total_remaining": 350000,
-    "unallocated": 5800000,
-    "savings": 6150000,  // income - spent
-    "categories_over_budget": 2,
-    "categories_warning": 3
-  }
+### models/notification.go (NEW)
 
-POST   /api/v1/budgets/reallocate
-  Body: {
-    "from_category_id": "uuid",
-    "to_category_id": "uuid",
-    "amount": 50000,
-    "reason": "Budget makan habis, pindahkan dari budget kopi"
-  }
-  Response: {
-    "reallocation": {...},
-    "from_category_budget": {
-      "remaining": 250000  // after deduction
-    },
-    "to_category_budget": {
-      "remaining": 100000  // after addition
+```go
+package models
+
+import (
+    "time"
+    "github.com/google/uuid"
+    "gorm.io/gorm"
+)
+
+const (
+    ScheduledFundTypeTopUp    = "TOP_UP"
+    ScheduledFundTypeTransfer = "TRANSFER"
+
+    NotificationTypeAllocationReminder = "ALLOCATION_REMINDER"
+    NotificationTypeBudgetAlert        = "BUDGET_ALERT"
+    NotificationTypeSavingsGoal        = "SAVINGS_GOAL"
+    NotificationTypeScheduledFund      = "SCHEDULED_FUND"
+)
+
+type ScheduledFund struct {
+    ID             uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+    AccountID      uuid.UUID  `gorm:"type:uuid;not null" json:"account_id"`
+    FromAccountID  *uuid.UUID `gorm:"type:uuid" json:"from_account_id,omitempty"`
+    ScheduleType   string     `gorm:"size:20;not null" json:"schedule_type"` // TOP_UP|TRANSFER
+    Amount         float64    `gorm:"type:decimal(15,2);not null" json:"amount"`
+    DayOfMonth     int        `gorm:"not null" json:"day_of_month"` // 1-31; 0=last day
+    Description    string     `gorm:"type:text" json:"description"`
+    IsActive       bool       `gorm:"not null;default:true" json:"is_active"`
+    LastExecutedAt *time.Time `json:"last_executed_at,omitempty"`
+    NextExecuteAt  time.Time  `gorm:"not null" json:"next_execute_at"`
+    CreatedAt      time.Time  `json:"created_at"`
+    UpdatedAt      time.Time  `json:"updated_at"`
+
+    Account     Account  `gorm:"foreignKey:AccountID"     json:"account,omitempty"`
+    FromAccount *Account `gorm:"foreignKey:FromAccountID" json:"from_account,omitempty"`
+}
+
+func (sf *ScheduledFund) BeforeCreate(tx *gorm.DB) error {
+    if sf.ID == uuid.Nil {
+        sf.ID = uuid.New()
     }
-  }
+    return nil
+}
 
-GET    /api/v1/budgets/reallocations?month=2&year=2026
-  Response: [
-    {
-      "id": "uuid",
-      "from_category": {...},
-      "to_category": {...},
-      "amount": 50000,
-      "reason": "...",
-      "created_at": "..."
-    },
-    ...
-  ]
+type NotificationSetting struct {
+    ID                uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+    Type              string     `gorm:"size:50;not null" json:"type"`
+    Title             string     `gorm:"size:200;not null" json:"title"`
+    Body              string     `gorm:"type:text;not null" json:"body"`
+    DayOfMonth        int        `gorm:"not null" json:"day_of_month"`
+    TimeOfDay         string     `gorm:"size:5;not null" json:"time_of_day"` // "09:00"
+    IsEnabled         bool       `gorm:"not null;default:true" json:"is_enabled"`
+    OneSignalPlayerID string     `gorm:"size:200;not null" json:"onesignal_player_id"`
+    LastSentAt        *time.Time `json:"last_sent_at,omitempty"`
+    CreatedAt         time.Time  `json:"created_at"`
+    UpdatedAt         time.Time  `json:"updated_at"`
+}
 
-DELETE /api/v1/budgets/reallocate/:id
-  Note: Cancel / hapus budget reallocation yang sudah dibuat
-  Response: {
-    "success": true,
-    "message": "Reallocation cancelled"
-  }
+func (ns *NotificationSetting) BeforeCreate(tx *gorm.DB) error {
+    if ns.ID == uuid.Nil {
+        ns.ID = uuid.New()
+    }
+    return nil
+}
 ```
 
-> ⚠️ **Note**: `POST /api/v1/budgets/reset` (Budget Reset) **belum diimplementasi** — masuk backlog Phase 2.
+---
+
+### models/transaction.go (Updated — diff key fields)
+
+```go
+// Income — tambah AccountID
+type Income struct {
+    ID          uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+    AccountID   uuid.UUID  `gorm:"type:uuid;not null" json:"account_id"`  // NEW
+    Source      string     `gorm:"size:100;not null" json:"source"`
+    Amount      float64    `gorm:"type:decimal(15,2);not null" json:"amount"`
+    Date        time.Time  `gorm:"not null" json:"date"`
+    Description string     `gorm:"type:text" json:"description"`
+    CreatedAt   time.Time  `json:"created_at"`
+    UpdatedAt   time.Time  `json:"updated_at"`
+
+    Account           Account            `gorm:"foreignKey:AccountID" json:"account,omitempty"`
+    BudgetAllocations []BudgetAllocation `gorm:"foreignKey:IncomeID"  json:"allocations,omitempty"`
+}
+
+// Expense — tambah AccountID
+type Expense struct {
+    ID          uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+    AccountID   uuid.UUID  `gorm:"type:uuid;not null" json:"account_id"`   // NEW
+    CategoryID  uuid.UUID  `gorm:"type:uuid;not null" json:"category_id"`
+    Amount      float64    `gorm:"type:decimal(15,2);not null" json:"amount"`
+    Date        time.Time  `gorm:"not null" json:"date"`
+    Description string     `gorm:"type:text" json:"description"`
+    CreatedAt   time.Time  `json:"created_at"`
+    UpdatedAt   time.Time  `json:"updated_at"`
+
+    Account  Account         `gorm:"foreignKey:AccountID"  json:"account,omitempty"`
+    Category ExpenseCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+}
+
+// ExpenseCategory — tambah DailyAmount
+type ExpenseCategory struct {
+    ID                 uuid.UUID      `gorm:"type:uuid;primary_key" json:"id"`
+    Name               string         `gorm:"size:100;not null" json:"name"`
+    Type               string         `gorm:"size:50;not null" json:"type"`
+    MonthlyBudget      float64        `gorm:"type:decimal(15,2);not null" json:"monthly_budget"`
+    DailyAmount        *float64       `gorm:"type:decimal(15,2)" json:"daily_amount,omitempty"` // NEW
+    AllocationPriority int            `gorm:"not null;default:1" json:"allocation_priority"`
+    IsActive           bool           `gorm:"not null;default:true" json:"is_active"`
+    Metadata           datatypes.JSON `gorm:"type:jsonb" json:"metadata" swaggertype:"object"`
+    CreatedAt          time.Time      `json:"created_at"`
+    UpdatedAt          time.Time      `json:"updated_at"`
+}
+
+// CategoryBudget — tambah EffectiveDailyAmount & DaysInMonth
+type CategoryBudget struct {
+    ID                   uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+    CategoryID           uuid.UUID  `gorm:"type:uuid;not null" json:"category_id"`
+    Month                int        `gorm:"not null" json:"month"`
+    Year                 int        `gorm:"not null" json:"year"`
+    AllocatedAmount      float64    `gorm:"type:decimal(15,2);not null;default:0" json:"allocated_amount"`
+    SpentAmount          float64    `gorm:"type:decimal(15,2);not null;default:0" json:"spent_amount"`
+    RemainingAmount      float64    `gorm:"type:decimal(15,2);not null;default:0" json:"remaining_amount"`
+    EffectiveDailyAmount *float64   `gorm:"type:decimal(15,2)" json:"effective_daily_amount,omitempty"` // NEW
+    DaysInMonth          *int       `json:"days_in_month,omitempty"`                                    // NEW
+    CreatedAt            time.Time  `json:"created_at"`
+    UpdatedAt            time.Time  `json:"updated_at"`
+
+    Category ExpenseCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+}
+```
 
 ---
 
-## 💡 Contoh Use Case
+## 📂 File & Folder Structure (Updated)
 
-### Scenario 1: Dapat Gaji
-1. User input pemasukan: Rp 8.000.000 dari "Gaji Februari"
-2. System otomatis alokasikan:
-   - Makan: Rp 1.240.000
-   - Bensin: Rp 175.000
-   - Listrik: Rp 200.000
-   - Copilot: Rp 180.000
-   - Internet: Rp 100.000
-   - Netflix: Rp 120.000
-   - Spotify: Rp 60.000
-   - Fore: Rp 24.000
-   - **Total alokasi: Rp 2.099.000**
-   - **Sisa uang bebas: Rp 5.901.000**
-
-3. User bisa lihat budget per kategori di dashboard
-
-### Scenario 2: Isi Bensin Pertama Kali
-1. User buka app, pilih "Catat Pengeluaran"
-2. Pilih kategori "Bensin"
-3. Input amount: Rp 35.000
-4. Deskripsi: "Isi bensin Shell Sudirman"
-5. Submit
-6. System:
-   - Budget bensin: Rp 175.000 → Rp 140.000 (sisa 4 kali isi)
-   - Catat expense baru
-
-### Scenario 3: Makan Sehari
-1. User catat pengeluaran makan: Rp 40.000
-2. System:
-   - Budget makan: Rp 1.240.000 → Rp 1.200.000 (sisa 30 hari)
-
-### Scenario 4: Tambah Kategori Baru
-1. User mau track "Kopi" dengan budget Rp 300.000/bulan
-2. Buat kategori baru:
-   - Name: "Kopi"
-   - Type: DAILY_CONTINUOUS
-   - Monthly Budget: Rp 300.000
-   - Priority: 5
-3. Kategori tersimpan, dan pemasukan berikutnya akan include alokasi ke "Kopi"
-
----
-
-## 🎨 Dashboard/UI Features
-
-### 1. Dashboard Home
-- **Total Income bulan ini**
-- **Total Allocated bulan ini**
-- **Total Spent bulan ini**
-- **Remaining Budget**
-- **Chart**: Income vs Expense trend (monthly)
-- **Quick Action**: Tambah Income, Tambah Expense
-
-### 2. Budget Overview
-- List semua kategori dengan:
-  - Progress bar (spent/allocated)
-  - Remaining amount
-  - Percentage used
-  - Color coding:
-    - Green: < 50% used
-    - Yellow: 50-80% used
-    - Red: > 80% used
-
-### 3. Expense History
-- Filter by:
-  - Category
-  - Date range
-  - Month/Year
-  - Amount range
-- Sorting: Date, Amount
-- Search by description
-- Pagination
-- Detail per expense
-- Edit/Delete expense
-
-### 4. Income History
-- List semua pemasukan
-- Lihat breakdown alokasi per income
-- Filter & pagination
-- Edit/Delete income (dengan re-calculation)
-
-### 5. Transaction Timeline (NEW)
-- Combined view: Income + Expense dalam satu list
-- Chronological order
-- Color coding: Green (income), Red (expense)
-- Filter by type, date range
-- Summary: Net balance, Total in/out
-
-### 6. Category Management
-- CRUD kategori
-- Set priority
-- Set monthly budget
-- Enable/disable kategori
-- View spending pattern per kategori
-
-### 7. Budget Management (NEW)
-- View current budget status dengan progress bars
-- Manual reallocation antar kategori
-- Budget alerts configuration
-- History realokasi
-
-### 8. Analytics & Reports (NEW)
-- Spending patterns per kategori (6 months trend)
-- Category comparison (bulan ini vs bulan lalu)
-- Top spending categories
-- Budget performance analysis
-- Monthly comprehensive report
-- Yearly summary
-- Export to PDF/Excel
+```
+be_finance_tracking_app/
+├── main.go                               (Updated: wire new handlers & services)
+├── config/config.go                      (Updated: +OneSignal env vars)
+├── database/database.go                  (Updated: +AutoMigrate new tables)
+├── models/
+│   ├── transaction.go                    (Updated: Income+AccountID, Expense+AccountID,
+│   │                                               Category+DailyAmount, Budget+DaysInMonth)
+│   ├── account.go                        (NEW: Account, AccountTransfer)
+│   └── notification.go                   (NEW: ScheduledFund, NotificationSetting)
+├── repositories/
+│   ├── account_repository.go             (NEW)
+│   ├── transfer_repository.go            (NEW)
+│   ├── scheduled_fund_repository.go      (NEW)
+│   ├── notification_repository.go        (NEW)
+│   ├── income_repository.go
+│   ├── expense_repository.go
+│   ├── category_repository.go
+│   ├── budget_repository.go
+│   ├── allocation_repository.go
+│   ├── reallocation_repository.go
+│   └── alert_repository.go
+├── services/
+│   ├── account_service.go                (NEW: CRUD + operations + archive)
+│   ├── transfer_service.go               (NEW: transfer + cancel)
+│   ├── scheduled_fund_service.go         (NEW: CRUD + execution)
+│   ├── notification_service.go           (NEW: OneSignal HTTP client + CRUD)
+│   ├── statistics_service.go             (NEW: monthly+overview stats)
+│   ├── income_service.go                 (Updated: +account link, +salary auto-alloc trigger)
+│   ├── expense_service.go                (Updated: +account link, +balance deduction)
+│   ├── category_service.go               (Updated: +daily_amount compute, +effective budget)
+│   ├── budget_service.go
+│   ├── analytics_service.go
+│   ├── report_service.go
+│   ├── alert_service.go
+│   ├── transaction_service.go            (Updated: +transfer type in combined view)
+│   └── scheduler_service.go              (Updated: +scheduled_fund cron, +notification cron)
+├── handlers/
+│   ├── account_handler.go                (NEW)
+│   ├── transfer_handler.go               (NEW)
+│   ├── statistics_handler.go             (NEW)
+│   ├── notification_handler.go           (NEW)
+│   ├── income_handler.go
+│   ├── expense_handler.go
+│   ├── category_handler.go
+│   ├── budget_handler.go
+│   ├── transaction_handler.go
+│   ├── analytics_handler.go
+│   ├── report_handler.go
+│   └── alert_handler.go
+├── utils/
+│   ├── helpers.go                        (Updated: +DaysInMonth utility)
+│   ├── export_pdf.go
+│   └── export_excel.go
+├── scripts/
+│   ├── seed/main.go
+│   └── cleanup/main.go
+└── test/
+    ├── integration/
+    │   ├── account_test.go               (NEW: CRUD, topup, spent, transfer, archive)
+    │   ├── transfer_test.go              (NEW: transfer flow + cancel + validation)
+    │   ├── allocation_flow_test.go       (NEW: salary income -> auto-allocation full flow)
+    │   ├── daily_budget_test.go          (NEW: DAILY_CONTINUOUS per Jan/Feb/Mar)
+    │   ├── statistics_test.go            (NEW: monthly & overview accuracy)
+    │   ├── notification_test.go          (NEW: settings CRUD + test send)
+    │   ├── api_integration_test.go
+    │   ├── analytics_test.go
+    │   ├── report_export_test.go
+    │   └── transaction_test.go
+    ├── services/
+    │   ├── account_service_test.go       (NEW)
+    │   ├── transfer_service_test.go      (NEW)
+    │   ├── income_service_test.go
+    │   └── expense_service_test.go
+    └── helpers/
+        ├── database_helper.go
+        └── http_helper.go
+```
 
 ---
 
-## 🔐 Future Enhancements (Phase 5+)
+## ⚙️ Environment Configuration (.env)
 
-1. **Multi-Currency Support**: Track expenses dalam berbagai mata uang
-2. **Recurring Transactions**: Auto-create expense untuk subscription setiap bulan
-3. **Advanced Notifications**: 
-   - Push notification untuk budget alerts
-   - Email digest bulanan
-   - Whatsapp integration
-4. **Savings Goals**: 
-   - Set target tabungan (misal: liburan, gadget baru)
-   - Track progress ke goal
-   - Allocate income ke savings
-5. **AI-Powered Insights**:
-   - Predict spending bulan depan
-   - Suggest budget optimization
-   - Anomaly detection (unusual spending)
-6. **Multi-User & Collaboration**:
-   - Family budget tracking
-   - Shared categories
-   - Permission management
-7. **Bank Integration**: 
-   - Auto-sync dengan rekening bank
-   - Import transactions from bank statements
-8. **Receipt Management**:
-   - Upload foto nota
-   - OCR untuk auto-fill amount
-9. **Investment Tracking**:
-   - Track returns from investments
-   - Portfolio overview
-10. **Tax Reporting**:
-    - Categorize deductible expenses
-    - Generate tax reports
+```env
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+DB_NAME=finance_tracking
+
+# Server
+SERVER_PORT=8081
+
+# OneSignal
+ONESIGNAL_APP_ID=your-onesignal-app-id
+ONESIGNAL_REST_API_KEY=your-onesignal-rest-api-key
+ONESIGNAL_API_URL=https://onesignal.com/api/v1
+```
 
 ---
 
-## 🛠️ Tech Stack
+## 🔐 Business Rules & Constraints
 
-### Backend
-- **Language**: Go 1.21+
-- **Framework**: Gin / Echo / Chi
-- **Database**: PostgreSQL 15+
-- **ORM**: GORM
-- **API**: RESTful
-- **Auth**: JWT (untuk future multi-user)
+### Account Rules
+1. `income_type` WAJIB diisi jika `type = CARD`. Error jika kosong.
+2. `goal_amount` dan `goal_label` hanya valid untuk `type = SAVINGS`. Jika diisi untuk CARD/CASH, diabaikan.
+3. Archiving TIDAK bisa jika `balance > 0` tanpa menyebutkan `transfer_remaining_to`.
+4. Hard delete akun TIDAK diizinkan — hanya archive (is_active=false).
+5. `type` dan `income_type` tidak bisa diubah setelah akun dibuat.
 
-### Frontend (Future)
-- **Web**: React + TypeScript + Tailwind CSS
-- **Mobile**: Flutter / React Native
+### Income & Auto-Allocation Rules
+1. Setiap income WAJIB punya `account_id` valid dan aktif.
+2. Auto-allocation HANYA terjadi jika akun `type=CARD` dan `income_type=SALARY`.
+3. Jika bulan+tahun income belum pernah ada alokasi: auto-allocate dan buat `category_budgets` baru.
+4. Jika sudah ada alokasi bulan ini: return `warning` dalam response, tidak auto-allocate ulang.
+5. Income non-SALARY: saldo akun bertambah, tidak ada alokasi budget.
 
-### DevOps
-- **Containerization**: Docker
-- **Database Migration**: golang-migrate
-- **API Documentation**: Swagger/OpenAPI
+### Expense Rules
+1. Setiap expense WAJIB punya `account_id` valid dan aktif.
+2. `account.balance >= amount` adalah constraint HARD — return 400 jika tidak cukup.
+3. `category_budget.remaining >= amount` adalah constraint SOFT — return warning + alert tapi tetap dibuat.
+4. Saldo akun berkurang atomis dalam transaksi DB yang sama dengan insert expense.
 
----
+### DAILY_CONTINUOUS Category Rules
+1. `daily_amount` WAJIB > 0 untuk tipe DAILY_CONTINUOUS.
+2. `monthly_budget` pada tabel `expense_categories` DIABAIKAN untuk DAILY_CONTINUOUS.
+3. Saat alokasi bisnis: `effective_budget = daily_amount × days_in_month(month, year)`.
+4. Snapshot `effective_daily_amount` dan `days_in_month` disimpan di `category_budgets` tiap bulan.
+5. Jika user update `daily_amount`, perubahan berlaku bulan BERIKUTNYA (tidak retroaktif).
 
-## 📝 Development Phases
+### Transfer Rules
+1. `from_account_id != to_account_id` — HARD constraint.
+2. `from_account.balance >= amount` — HARD constraint.
+3. Transfer bisa di-cancel dalam 24 jam. Rollback kedua saldo akun dalam satu transaksi DB.
+4. Transfer tidak mempengaruhi `category_budgets` atau `budget_allocations`.
 
-### Phase 1: Core Backend (1-2 minggu)
-- ✅ Setup project structure
-- ✅ Database schema & migrations
-- ✅ Models & repositories
-- ✅ Core APIs: Income, Category, Expense, Budget
-- ✅ Auto-allocation logic
-- ✅ Unit tests
+### Scheduled Fund Rules
+1. `day_of_month = 0` berarti hari terakhir bulan (`last_day_of_month`).
+2. Jika `day_of_month = 31` dan bulan tidak punya 31 hari, eksekusi di hari terakhir bulan.
+3. Jika saldo tidak cukup saat eksekusi, schedule DI-SKIP dan kirim notifikasi error ke device.
+4. `next_execute_at` di-update ke bulan berikutnya setelah eksekusi berhasil atau gagal.
 
-### Phase 2: Enhanced Backend Features (2-3 minggu)
-- ✅ CRUD lengkap untuk Income & Expense (PATCH, DELETE)
-- ✅ Pagination & advanced filtering untuk semua endpoints
-- ✅ Transaction History API (combined income + expense)
-- ✅ Budget Reallocation API (POST + GET + DELETE/cancel)
-- [ ] Budget Reset Management (auto & manual) — **belum diimplementasi**
-- ✅ Budget Alerts API & logic (CRUD + threshold check)
-- ✅ Data validation & comprehensive error handling
-- [ ] Unit tests untuk semua fitur baru
-
-### Phase 3: Analytics & Reporting (1-2 minggu)
-- ✅ Analytics endpoints:
-  - ✅ Spending patterns
-  - ✅ Category comparison
-  - ✅ Top spending
-  - ✅ Budget performance
-- ✅ Report endpoints:
-  - ✅ Monthly report
-  - ✅ Yearly report
-  - ✅ Export to PDF (`/monthly/export`, `/yearly/export`)
-  - ✅ Export to Excel (`/monthly/export`, `/yearly/export`)
-- ✅ Monthly report auto-generation (cron job — 1st of every month)
-- ✅ Integration tests (18/21 passing)
-
-### Phase 4: Frontend Development — Mobile App (Flutter) ← **IN PROGRESS**
-- [ ] Phase 4.1: Core UI (Flutter)
-  - [ ] Dashboard dengan charts
-  - [ ] Income/Expense forms (create, edit, delete)
-  - [ ] Category management
-  - [ ] Transaction timeline
-- [ ] Phase 4.2: Advanced UI
-  - [ ] Budget management & reallocation
-  - [ ] Analytics screens (trends, comparisons)
-  - [ ] Reports viewer
-  - [ ] Alert configuration
-- [ ] Phase 4.3: Polish
-  - [ ] Animations & transitions
-  - [ ] Empty states & loading states
-  - [ ] Error handling UI
-  - [ ] Responsive design
-
-### Phase 5: Testing & Optimization (1-2 minggu)
-- [ ] E2E testing (frontend + backend)
-- [ ] Performance testing & optimization
-- [ ] Database indexing untuk query performance
-- [ ] Caching strategy (Redis)
-- [ ] Security audit
-- [ ] Load testing
-
-### Phase 6: Deployment & Documentation (1 minggu)
-- [ ] Setup production environment
-- [ ] Deploy backend (Docker + K8s / Cloud Run)
-- [ ] Deploy frontend (Web hosting / App stores)
-- [ ] API documentation (Swagger/OpenAPI)
-- [ ] User documentation & tutorials
-- [ ] Admin dashboard (optional)
-
-### Phase 7: Advanced Features (Future)
-- [ ] Multi-currency support
-- [ ] Recurring transactions
-- [ ] Push notifications
-- [ ] Savings goals
-- [ ] AI insights
-- [ ] Bank integration
+### Notification Rules
+1. OneSignal Player ID HARUS didaftarkan via `POST /notifications/register-device`.
+2. Notifikasi hanya dikirim SEKALI per hari (cek `last_sent_at`).
+3. Cron check setiap menit; kirim hanya jika `time_of_day` dalam window ±5 menit.
 
 ---
 
-## 📅 Recent Updates
+## 🧪 Testing Strategy
 
-### February 20, 2026 - Backend Selesai, Mulai Mobile App (Flutter)
-**Status Backend: ✅ Semua Phase 1-3 selesai dan berjalan.**
+### Test Matrix per Endpoint
 
-#### Ringkasan Endpoint yang Tersedia (base URL: `http://localhost:8080/api/v1`)
+#### POST /api/v1/accounts
+| Input | Expected |
+|-------|----------|
+| type=CARD, income_type=SALARY | 201, account created |
+| type=CARD, income_type kosong | 400 "income_type required for CARD" |
+| type=SAVINGS, goal_amount=10jt | 201, savings dengan goal |
+| type=CASH | 201, cash account |
+| name kosong | 400 |
+
+#### POST /api/v1/accounts/:id/topup
+| Input | Expected |
+|-------|----------|
+| CARD SALARY, belum ada alokasi bulan ini | 201, allocation triggered, warning=null |
+| CARD SALARY, sudah ada alokasi bulan ini | 201, allocation.triggered=false, warning!=null |
+| CARD PROJECT | 201, no allocation |
+| CASH | 201, no allocation |
+| account tidak aktif | 400 "Account is archived" |
+| amount = 0 | 400 |
+| account tidak ditemukan | 404 |
+
+#### POST /api/v1/accounts/:id/spent
+| Input | Expected |
+|-------|----------|
+| saldo cukup, budget cukup | 201, expense + saldo berkurang |
+| saldo cukup, budget >80% terpakai | 201 + alert.level="warning" |
+| saldo cukup, budget >100% terpakai | 201 + alert.level="critical" |
+| saldo TIDAK cukup | 400 "Insufficient account balance" |
+| category tidak aktif | 400 "Category is inactive" |
+| account tidak aktif | 400 "Account is archived" |
+| category_id tidak ada | 404 |
+
+#### POST /api/v1/accounts/:id/transfer
+| Input | Expected |
+|-------|----------|
+| saldo cukup, akun tujuan aktif | 201, kedua saldo terupdate |
+| saldo TIDAK cukup | 400 "Insufficient balance" |
+| from = to (sama) | 400 "Cannot transfer to the same account" |
+| akun tujuan tidak aktif | 400 "Destination account is archived" |
+| amount = 0 | 400 |
+
+#### POST /api/v1/accounts/:id/archive
+| Input | Expected |
+|-------|----------|
+| saldo = 0 | 200 |
+| saldo > 0, transfer_remaining_to valid | 200 + saldo pindah |
+| saldo > 0, tidak ada transfer_remaining_to | 400 |
+| saldo > 0, transfer_remaining_to tidak aktif | 400 |
+| akun sudah archived | 400 |
+
+#### DAILY_CONTINUOUS Allocation
+| Kondisi | Expected |
+|---------|----------|
+| Januari 2026 (31 hari), daily=40000 | allocated proportional, days_in_month=31, effective_daily=40000 |
+| Februari 2026 (28 hari), daily=40000 | allocated proportional, days_in_month=28 |
+| Februari 2028 (29 hari), daily=40000 | days_in_month=29 |
+| Update daily_amount, jalankan alokasi bulan depan | Pakai nilai baru |
+
+#### DELETE /api/v1/transfers/:id
+| Kondisi | Expected |
+|---------|----------|
+| Transfer < 24 jam | 200, kedua saldo di-rollback |
+| Transfer > 24 jam | 400 "Cannot cancel transfer after 24 hours" |
+| Transfer tidak ada | 404 |
+
+---
+
+## 📅 Endpoint Map Lengkap (v2)
+
 | Method | Endpoint | Keterangan |
 |--------|----------|------------|
-| POST   | `/incomes` | Buat income + auto-allocate budget |
-| GET    | `/incomes` | List incomes (filter: month, year, source, pagination, sort) |
-| GET    | `/incomes/:id` | Detail income + list allocations |
-| PATCH  | `/incomes/:id` | Update income + recalculate allocations |
-| DELETE | `/incomes/:id` | Hapus income + rollback allocations |
-| POST   | `/categories` | Buat kategori baru |
-| GET    | `/categories` | List semua kategori |
-| GET    | `/categories/:id` | Detail kategori |
-| PATCH  | `/categories/:id` | Update kategori |
-| DELETE | `/categories/:id` | Soft delete kategori (is_active=false) |
-| POST   | `/expenses` | Catat pengeluaran + update budget |
-| GET    | `/expenses` | List expenses (filter: category, month, year, date range, amount range, search, pagination) |
-| GET    | `/expenses/:id` | Detail expense |
-| PATCH  | `/expenses/:id` | Update expense + adjust budget |
-| DELETE | `/expenses/:id` | Hapus expense + restore budget |
-| GET    | `/budgets` | Budget per kategori per bulan |
-| GET    | `/budgets/summary` | Ringkasan budget bulan ini |
-| POST   | `/budgets/reallocate` | Manual realokasi budget antar kategori |
-| GET    | `/budgets/reallocations` | History realokasi |
+| **ACCOUNTS** | | |
+| POST | `/accounts` | Buat akun baru |
+| GET | `/accounts` | List semua akun |
+| GET | `/accounts/summary` | Ringkasan saldo semua akun |
+| GET | `/accounts/:id` | Detail akun + balance summary |
+| PATCH | `/accounts/:id` | Update nama/warna/goal akun |
+| POST | `/accounts/:id/topup` | Top Up + auto-allocation jika SALARY |
+| POST | `/accounts/:id/spent` | Catat pengeluaran dari akun |
+| POST | `/accounts/:id/transfer` | Transfer ke akun lain |
+| POST | `/accounts/:id/archive` | Archive akun |
+| GET | `/accounts/:id/transfers` | History transfer akun ini |
+| **TRANSFERS** | | |
+| GET | `/transfers` | List semua transfer |
+| GET | `/transfers/:id` | Detail transfer |
+| DELETE | `/transfers/:id` | Cancel transfer (dalam 24 jam) |
+| **STATISTICS** | | |
+| GET | `/statistics/monthly` | Grafik income & expense per bulan (yearly) |
+| GET | `/statistics/overview` | Overview keuangan bulan tertentu |
+| **SCHEDULED FUNDS** | | |
+| POST | `/scheduled-funds` | Buat jadwal top-up/transfer |
+| GET | `/scheduled-funds` | List semua jadwal |
+| PATCH | `/scheduled-funds/:id` | Update jadwal |
+| DELETE | `/scheduled-funds/:id` | Hapus jadwal |
+| **NOTIFICATIONS** | | |
+| POST | `/notifications/register-device` | Daftar OneSignal Player ID |
+| POST | `/notifications/settings` | Buat konfigurasi reminder |
+| GET | `/notifications/settings` | List konfigurasi reminder |
+| GET | `/notifications/settings/:id` | Detail konfigurasi |
+| PATCH | `/notifications/settings/:id` | Update konfigurasi |
+| DELETE | `/notifications/settings/:id` | Hapus konfigurasi |
+| POST | `/notifications/test` | Kirim test notification |
+| **INCOMES** | | |
+| POST | `/incomes` | Buat income record (manual) |
+| GET | `/incomes` | List incomes |
+| GET | `/incomes/:id` | Detail income |
+| PATCH | `/incomes/:id` | Update income |
+| DELETE | `/incomes/:id` | Hapus income + rollback |
+| **CATEGORIES** | | |
+| POST | `/categories` | Buat kategori |
+| GET | `/categories` | List kategori |
+| GET | `/categories/:id` | Detail kategori |
+| PATCH | `/categories/:id` | Update kategori |
+| DELETE | `/categories/:id` | Archive kategori |
+| **EXPENSES** | | |
+| POST | `/expenses` | Buat expense record (manual) |
+| GET | `/expenses` | List expenses |
+| GET | `/expenses/:id` | Detail expense |
+| PATCH | `/expenses/:id` | Update expense |
+| DELETE | `/expenses/:id` | Hapus expense + restore |
+| **BUDGETS** | | |
+| GET | `/budgets` | Budget per kategori per bulan |
+| GET | `/budgets/summary` | Ringkasan budget bulan ini |
+| POST | `/budgets/reallocate` | Manual realokasi budget |
+| GET | `/budgets/reallocations` | History realokasi |
 | DELETE | `/budgets/reallocate/:id` | Cancel realokasi |
-| GET    | `/transactions` | Combined income+expense (filter: type, date range, category, pagination) |
-| GET    | `/analytics/spending-pattern` | Trend spending 6 bulan per kategori |
-| GET    | `/analytics/category-comparison` | Perbandingan bulan ini vs bulan lalu |
-| GET    | `/analytics/top-spending` | Top kategori pengeluaran |
-| GET    | `/analytics/budget-performance` | Performa budget per tahun |
-| GET    | `/reports/monthly` | Laporan bulanan lengkap |
-| GET    | `/reports/monthly/export` | Export laporan bulanan (format: pdf/excel) |
-| GET    | `/reports/yearly` | Laporan tahunan |
-| GET    | `/reports/yearly/export` | Export laporan tahunan (format: pdf/excel) |
-| GET    | `/alerts` | List budget alerts |
-| POST   | `/alerts` | Buat alert baru |
-| PATCH  | `/alerts/:id` | Update alert (threshold, enabled) |
+| **TRANSACTIONS** | | |
+| GET | `/transactions` | Combined income+expense+transfer |
+| **ANALYTICS** | | |
+| GET | `/analytics/spending-pattern` | Trend spending 6 bulan per kategori |
+| GET | `/analytics/category-comparison` | Bulan ini vs bulan lalu |
+| GET | `/analytics/top-spending` | Top kategori pengeluaran |
+| GET | `/analytics/budget-performance` | Performa budget per tahun |
+| **REPORTS** | | |
+| GET | `/reports/monthly` | Laporan bulanan lengkap |
+| GET | `/reports/monthly/export` | Export PDF/Excel bulanan |
+| GET | `/reports/yearly` | Laporan tahunan |
+| GET | `/reports/yearly/export` | Export PDF/Excel tahunan |
+| **ALERTS** | | |
+| GET | `/alerts` | List budget alerts |
+| POST | `/alerts` | Buat alert |
+| PATCH | `/alerts/:id` | Update alert |
 | DELETE | `/alerts/:id` | Hapus alert |
 
-#### Catatan Penting untuk Mobile Development
-- Semua HTTP method update menggunakan **PATCH** (bukan PUT)
-- Format date request: **RFC3339** (`2026-02-20T00:00:00Z`)
-- Format date query param: **YYYY-MM-DD** (`2026-02-20`)
-- Semua response membungkus data dalam `{ "success": bool, "message": string, "data": ... }`
-- Server berjalan di port **8080** (default), bisa dikonfigurasi via `.env` `SERVER_PORT`
-- CORS sudah dikonfigurasi **Allow All Origins** — aman untuk development mobile
-- Swagger docs tersedia di: `http://localhost:8080/swagger/index.html`
-- Health check: `GET http://localhost:8080/health`
-
-#### Known Limitations / Belum Diimplementasi
-- `POST /budgets/reset` — Budget Reset manual belum tersedia
-- `GET /alerts/:id` — Tidak ada endpoint detail alert by ID
-- Export format `csv` tidak tersedia (hanya `pdf` dan `excel`)
-- Belum ada authentication (JWT) — single-user app
+> Semua endpoint berada di bawah base path `/api/v1`.
 
 ---
 
-### February 19, 2026 - Phase 3 Completion: Export & Automation
-**New Features:**
-
-#### 1. Report Export System
-- **PDF Export**
-  - `GET /api/v1/reports/monthly/export?month=2&year=2026&format=pdf`
-  - `GET /api/v1/reports/yearly/export?year=2026&format=pdf`
-  - Professional PDF formatting with tables for income, expenses, budgets
-  - Automatic filename generation with timestamps
-  
-- **Excel Export**
-  - `GET /api/v1/reports/monthly/export?month=2&year=2026&format=excel`
-  - `GET /api/v1/reports/yearly/export?year=2026&format=excel`
-  - Formatted spreadsheets with currency formatting and styled headers
-  - Multiple sheets for different data categories
-
-#### 2. Automated Scheduler Service
-- **Cron Job Scheduler** (using robfig/cron/v3)
-  - Monthly report auto-generation on 1st of every month at 00:01
-  - Configurable schedule for future automation tasks
-  - Graceful start/stop lifecycle management
-  - Background service integration in main.go
-
-#### 3. Comprehensive Integration Tests
-- **Report Export Tests** (test/integration/report_export_test.go)
-  - PDF/Excel export validation for monthly and yearly reports
-  - Format validation and header checking
-  - Invalid parameter handling
-  
-- **Analytics Tests** (test/integration/analytics_test.go)
-  - Spending pattern analysis
-  - Category comparison
-  - Top spending and budget performance
-  
-- **Transaction Tests** (test/integration/transaction_test.go)
-  - Transaction history with filtering, pagination, sorting
-  - Date range queries
-  - Parameter validation
-
-**Test Results:**
-- ✅ 18/21 integration tests passing
-- ✅ All core Phase 3 features validated (PDF, Excel, scheduler)
-- ⚠️ 3 minor validation edge cases pending (non-critical)
-
-**Dependencies Added:**
-- `github.com/jung-kurt/gofpdf` v1.16.2 - PDF generation
-- `github.com/xuri/excelize/v2` v2.10.0 - Excel file creation
-- `github.com/robfig/cron/v3` - Cron job scheduling
-
----
-
-### February 19, 2026 - Phase 2 & 3 Implementation
-**Completed Features:****
-
-#### 1. Enhanced CRUD Operations
-- **PATCH /api/v1/incomes/:id** - Update income with automatic allocation recalculation
-- **PATCH /api/v1/expenses/:id** - Update expense with budget adjustment and category change support
-
-#### 2. Transaction Management
-- **GET /api/v1/transactions** - Combined income + expense history with:
-  - Flexible filtering (by type, date range, category)
-  - Pagination and sorting
-  - Summary statistics (total income, total expense, net balance)
-
-#### 3. Budget Reallocation
-- **POST /api/v1/budgets/reallocate** - Manual budget reallocation between categories
-- **GET /api/v1/budgets/reallocations** - History tracking of all reallocations
-- **DELETE /api/v1/budgets/reallocate/:id** - Cancel a reallocation
-
-#### 4. Analytics APIs (4 endpoints)
-- **GET /api/v1/analytics/spending-pattern** - 6-month spending trend analysis per category
-- **GET /api/v1/analytics/category-comparison** - Month-to-month category comparison
-- **GET /api/v1/analytics/top-spending** - Ranked list of highest spending categories
-- **GET /api/v1/analytics/budget-performance** - Yearly budget performance metrics
-
-#### 5. Comprehensive Reporting
-- **GET /api/v1/reports/monthly** - Detailed monthly financial report with insights
-- **GET /api/v1/reports/yearly** - Annual summary with trends and category breakdowns
-
-#### 6. Budget Alert System
-- **POST /api/v1/alerts** - Create budget threshold alerts
-- **GET /api/v1/alerts** - List all alerts with filtering
-- **GET /api/v1/alerts/:id** - Get alert details
-- **PATCH /api/v1/alerts/:id/status** - Update alert status
-
-**New Models Added:**
-- `BudgetReallocation` - Tracks manual budget transfers between categories
-- `BudgetAlert` - Configurable budget threshold warnings
-
-**New Repositories:**
-- `BudgetReallocationRepository` - Budget reallocation persistence
-- `BudgetAlertRepository` - Alert management persistence
-
-**New Services:**
-- `TransactionService` - Combined transaction history logic
-- `AnalyticsService` - Financial analytics and insights
-- `ReportService` - Comprehensive reporting
-- `AlertService` - Alert management and threshold checking
-
-**Files Modified:**
-- `services/income_service.go` - Added UpdateIncome method
-- `services/expense_service.go` - Added UpdateExpense method
-- `services/budget_service.go` - Added ReallocateBudget, GetReallocations methods
-- `handlers/transaction_handler.go` - Created new handler
-- `handlers/analytics_handler.go` - Created new handler
-- `handlers/report_handler.go` - Created new handler
-- `handlers/alert_handler.go` - Created new handler
-- `handlers/budget_handler.go` - Added reallocation endpoints
-- `handlers/expense_handler.go` - Added PUT endpoint
-- `models/transaction.go` - Added new models
-- `main.go` - Wired all new services and routes
-
-**Total New Endpoints:** 15 endpoints implemented
-
-**Status:** ✅ All endpoints tested and compiled successfully
-
-**Next Steps:**
-- Implement Budget Reset Management (auto & manual)
-- Add Export to PDF/Excel functionality
-- Create monthly report auto-generation (cron job)
-- Write unit tests for new features
-- Write integration tests
-
----
-
-## ✅ Kesimpulan
-
-Arsitektur ini dirancang untuk:
-1. **Flexible**: User bisa custom kategori sendiri
-2. **Automated**: Auto-allocation dari income
-3. **Real-time tracking**: Budget update langsung
-4. **Scalable**: Bisa dikembangkan ke multi-user atau fitur advanced
-5. **Simple**: Focus pada core functionality dulu
-
----
-
-# 📱 MOBILE APP ARCHITECTURE (Flutter)
-
-## 🔌 Backend Integration Guide (untuk Implementasi Flutter)
-
-### Base Configuration
-```dart
-// lib/services/api_client.dart
-const String baseUrl = 'http://10.0.2.2:8080/api/v1'; // Android Emulator
-// const String baseUrl = 'http://localhost:8080/api/v1'; // iOS Simulator
-// const String baseUrl = 'http://<local-ip>:8080/api/v1'; // Physical device
-```
+## 📋 Catatan Implementasi
 
 ### Standard Response Format
-Semua endpoint mengembalikan format yang konsisten:
 ```json
-{
-  "success": true,
-  "message": "...",
-  "data": { ... }   // atau array [ ... ]
-}
+{ "success": true, "message": "...", "data": { ... } }
+{ "success": false, "error": "error message here" }
 ```
 
-Error response:
+### HTTP Methods
+- Buat data baru: `POST`
+- Ambil list/detail: `GET`
+- Update sebagian: `PATCH` (bukan PUT)
+- Hapus: `DELETE`
+
+### Date Format
+- Body/JSON: RFC3339 → `"2026-03-25T00:00:00Z"`
+- Query param: YYYY-MM-DD → `?start_date=2026-03-25`
+
+### Pagination
 ```json
-{
-  "success": false,
-  "error": "error message here"
-}
-```
-
-### HTTP Methods Summary (Mobile → Backend)
-| Aksi | Method | Catatan |
-|------|--------|---------|
-| Buat data baru | `POST` | |
-| Ambil list / detail | `GET` | |
-| Update sebagian field | `PATCH` | **Bukan PUT** |
-| Hapus | `DELETE` | Beberapa bersifat soft delete |
-
-### Request Date Format
-- **Body / JSON payload**: RFC3339 → `"2026-02-20T00:00:00Z"`
-- **Query parameter**: YYYY-MM-DD → `?start_date=2026-02-20`
-
-### Pagination Pattern
-```json
-// Query: GET /expenses?page=1&limit=20
-// Response data structure (wrapped dalam "data"):
-{
-  "data": [...],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 150,
-    "total_pages": 8
-  }
-}
-```
-
-### Income Allocations
-Setelah `POST /incomes`, response include breakdown alokasi:
-```json
-{
-  "success": true,
-  "data": {
-    "income": { "id": "...", "source": "Gaji", "amount": 8000000 },
-    "allocations": [
-      { "category_id": "...", "category_name": "Makan", "allocated_amount": 1240000 },
-      { "category_id": "...", "category_name": "Netflix", "allocated_amount": 120000 }
-    ]
-  }
-}
-```
-
-### Budget Alert in Expense Response
-Setelah `POST /expenses`, response include alert jika triggered:
-```json
-{
-  "success": true,
-  "data": {
-    "expense": { ... },
-    "budget_remaining": 140000,
-    "alert": {
-      "level": "warning",
-      "message": "Budget bensin sudah terpakai 85%",
-      "percentage_used": 85
-    }
-  }
-}
-```
-
-### Export Files
-`GET /reports/monthly/export?month=2&year=2026&format=pdf`
-- Response: binary file dengan header `Content-Disposition: attachment`
-- Gunakan `http` package dengan `saveFile` atau `open_file` plugin di Flutter
-
----
-
-## 🏗️ Arsitektur Mobile App
-
-### Layer Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    UI Layer (Screens)                   │
-│  - Dashboard, Income, Expense, Budget, Analytics, dll   │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│              State Management (Providers)               │
-│  - AnalyticsProvider                                    │
-│  - ReportProvider                                       │
-│  - AlertProvider                                        │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Business Logic (Services)              │
-│  - IncomeService, ExpenseService, CategoryService       │
-│  - BudgetService, AnalyticsService, ReportService       │
-│  - AlertService                                         │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                  API Client Layer                       │
-│  - HTTP Communication                                    │
-│  - Error Handling                                       │
-│  - Request/Response Serialization                       │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-                    Backend API (Go)
-```
-
-### Struktur Folder
-
-```
-lib/
-├── main.dart                      # Entry point aplikasi
-├── core/                          # Core functionality
-│   ├── constants/                 # App constants & configuration
-│   ├── navigation/                # Routing & navigation
-│   │   └── routes.dart            # Route definitions
-│   └── theme/                     # Theme & styling
-│       └── app_theme.dart         # Light/Dark theme
-│
-├── models/                        # Data models
-│   ├── income.dart                # Income model
-│   ├── expense.dart               # Expense model
-│   ├── expense_category.dart      # Category model
-│   ├── budget.dart                # Budget allocation model
-│   ├── analytics.dart             # Analytics data models
-│   ├── report.dart                # Report models
-│   └── alert.dart                 # Alert/notification model
-│
-├── providers/                     # State management (Provider)
-│   ├── analytics_provider.dart    # Analytics state
-│   ├── report_provider.dart       # Report state
-│   └── alert_provider.dart        # Alert state
-│
-├── services/                      # Business logic & API calls
-│   ├── api_client.dart            # HTTP client configuration
-│   ├── income_service.dart        # Income API calls
-│   ├── expense_service.dart       # Expense API calls
-│   ├── category_service.dart      # Category API calls
-│   ├── budget_service.dart        # Budget API calls
-│   ├── analytics_service.dart     # Analytics API calls
-│   ├── report_service.dart        # Report API calls
-│   └── alert_service.dart         # Alert API calls
-│
-├── screens/                       # UI Screens
-│   ├── dashboard/                 # Dashboard screen
-│   ├── incomes/                   # Income screens
-│   ├── expenses/                  # Expense screens
-│   ├── categories/                # Category screens
-│   ├── budget/                    # Budget screens
-│   ├── transactions/              # Transaction history screens
-│   ├── analytics/                 # Analytics screens
-│   ├── reports/                   # Report screens
-│   └── alerts/                    # Alert screens
-│
-├── widgets/                       # Reusable widgets
-│   ├── common/                    # Common widgets
-│   ├── dashboard/                 # Dashboard-specific widgets
-│   ├── expenses/                  # Expense widgets
-│   ├── budget/                    # Budget widgets
-│   └── categories/                # Category widgets
-│
-└── utils/                         # Utilities
-    ├── formatters.dart            # Data formatters (currency, date)
-    └── validators.dart            # Form validators
+{ "data": [...], "pagination": { "page": 1, "limit": 20, "total": 150, "total_pages": 8 } }
 ```
 
 ---
 
-## 📄 HALAMAN & FUNGSI
+## 📅 Development Phases (Updated)
 
-### 1. 🏠 Dashboard Screen
-**File**: `lib/screens/dashboard/dashboard_screen.dart`
+### Phase 1–3: SELESAI
+- Core backend: Income, Expense, Category, Budget, Analytics, Reports, Alerts
+- Export PDF/Excel, Scheduler, 18/21 Integration tests passing
 
-**Fungsi**:
-- Menampilkan ringkasan keuangan terkini
-- Total pemasukan bulan ini
-- Total pengeluaran bulan ini
-- Sisa budget keseluruhan
-- Quick stats per kategori
-- Recent transactions (5 terakhir)
-- Quick actions (Add Income, Add Expense)
+### Phase 4: Account, Transfer, Statistics, OneSignal (CURRENT)
+- [ ] DB migrations: accounts, account_transfers, scheduled_funds, notification_settings
+- [ ] Column migrations: account_id di incomes & expenses; daily_amount di categories; days_in_month di category_budgets
+- [ ] Account model, repository, service, handler
+- [ ] Transfer model, repository, service, handler
+- [ ] Update Income service: account link + salary trigger
+- [ ] Update Expense service: account link + balance deduction
+- [ ] Update Category service: DAILY_CONTINUOUS compute
+- [ ] Statistics service & handler
+- [ ] Scheduled fund service + cron
+- [ ] OneSignal notification service
+- [ ] Notification settings CRUD
+- [ ] Update Scheduler: scheduled_fund cron + notification cron
+- [ ] Integration tests per endpoint (semua kondisi)
 
-**Data Source**:
-- **Services**: 
-  - `IncomeService.getIncomes()` - Get income bulan ini
-  - `ExpenseService.getExpenses()` - Get expense bulan ini
-  - `BudgetService.getBudgetSummary()` - Get budget overview
-  - `CategoryService.getCategories()` - Get semua kategori
-- **Models**: `Income`, `Expense`, `ExpenseCategory`, `Budget`
+### Phase 5: Frontend Mobile (Flutter)
 
-**Navigation**:
-- ➡️ AddIncomeScreen
-- ➡️ AddExpenseScreen
-- ➡️ IncomeHistoryScreen
-- ➡️ ExpenseHistoryScreen
-- ➡️ CategoryManagementScreen
-- ➡️ BudgetOverviewScreen
-- ➡️ AnalyticsScreen
-- ➡️ ReportsScreen
+### Phase 6: Optimization & Production (Docker, JWT, Redis)
 
 ---
 
-### 2. 💰 Income Screens
-
-#### 2.1 Add Income Screen
-**File**: `lib/screens/incomes/add_income_screen.dart`
-
-**Fungsi**:
-- Form input pemasukan baru
-- Pilih sumber pemasukan (Gaji, Project, Bonus, dll)
-- Input jumlah pemasukan
-- Input tanggal pemasukan
-- Input deskripsi/notes (optional)
-- Auto-trigger budget allocation setelah save
-
-**Data Source**:
-- **Services**: 
-  - `IncomeService.createIncome()` - POST income baru
-- **Models**: `Income`
-
-**Validation**:
-- Amount harus > 0
-- Source tidak boleh kosong
-- Date tidak boleh di masa depan
-
-**Navigation**:
-- ⬅️ Back to previous screen
-- ✅ Success → Navigate back + show success message
-
----
-
-#### 2.2 Income History Screen
-**File**: `lib/screens/incomes/income_history_screen.dart`
-
-**Fungsi**:
-- List semua pemasukan (terbaru di atas)
-- Filter by date range (This month, Last month, Custom range)
-- Filter by source
-- Detail per income (source, amount, date, description)
-- Edit income
-- Delete income
-- Lihat budget allocation yang terjadi dari income tersebut
-
-**Data Source**:
-- **Services**: 
-  - `IncomeService.getIncomes()` - GET list incomes
-  - `IncomeService.updateIncome()` - PUT update income
-  - `IncomeService.deleteIncome()` - DELETE income
-  - `BudgetService.getAllocationsForIncome()` - GET allocations
-- **Models**: `Income`, `Budget`
-
-**Navigation**:
-- ➡️ AddIncomeScreen (FAB atau top button)
-- ➡️ Edit Income (inline edit atau separate screen)
-
----
-
-### 3. 💸 Expense Screens
-
-#### 3.1 Add Expense Screen
-**File**: `lib/screens/expenses/add_expense_screen.dart`
-
-**Fungsi**:
-- Form input pengeluaran baru
-- Pilih kategori pengeluaran (dari kategori yang sudah dibuat)
-- Input jumlah pengeluaran
-- Input tanggal pengeluaran
-- Input deskripsi/notes (optional)
-- Validasi: amount tidak boleh > remaining budget kategori
-- Auto-update budget kategori setelah save
-
-**Data Source**:
-- **Services**: 
-  - `ExpenseService.createExpense()` - POST expense baru
-  - `CategoryService.getCategories()` - GET list categories
-  - `BudgetService.getBudgetByCategory()` - Check remaining budget
-- **Models**: `Expense`, `ExpenseCategory`, `Budget`
-
-**Validation**:
-- Amount harus > 0
-- Category harus dipilih
-- Date tidak boleh di masa depan
-- Amount tidak boleh melebihi remaining budget (warning, bisa override)
-
-**Navigation**:
-- ⬅️ Back to previous screen
-- ✅ Success → Navigate back + show success message
-
----
-
-#### 3.2 Expense History Screen
-**File**: `lib/screens/expenses/expense_history_screen.dart`
-
-**Fungsi**:
-- List semua pengeluaran (terbaru di atas)
-- Filter by date range
-- Filter by category
-- Group by date atau category (toggle view)
-- Detail per expense (category, amount, date, description)
-- Edit expense (akan adjust budget kembali)
-- Delete expense (akan refund budget)
-- Color coding by category
-
-**Data Source**:
-- **Services**: 
-  - `ExpenseService.getExpenses()` - GET list expenses
-  - `ExpenseService.updateExpense()` - PUT update expense
-  - `ExpenseService.deleteExpense()` - DELETE expense
-  - `CategoryService.getCategories()` - GET categories untuk filter
-- **Models**: `Expense`, `ExpenseCategory`
-
-**Navigation**:
-- ➡️ AddExpenseScreen (FAB)
-- ➡️ Edit Expense
-
----
-
-### 4. 📂 Category Management Screens
-
-#### 4.1 Category Management Screen
-**File**: `lib/screens/categories/category_management_screen.dart`
-
-**Fungsi**:
-- List semua kategori pengeluaran
-- Lihat detail kategori:
-  - Nama kategori
-  - Tipe kategori (SUBSCRIPTION, DAILY_CONTINUOUS, USAGE_BASED, ONE_TIME)
-  - Allocation method (PERCENTAGE atau FIXED_AMOUNT)
-  - Allocation value
-  - Current budget (remaining)
-  - Monthly target (untuk usage_based)
-  - Subscription due date (untuk subscription type)
-  - Status (active/inactive)
-- Add kategori baru
-- Edit kategori
-- Deactivate/activate kategori
-- Lihat expense history per kategori
-
-**Data Source**:
-- **Services**: 
-  - `CategoryService.getCategories()` - GET list categories
-  - `CategoryService.deleteCategory()` - DELETE category (soft delete)
-  - `CategoryService.toggleCategoryStatus()` - Toggle active status
-  - `BudgetService.getBudgetByCategory()` - GET budget info
-- **Models**: `ExpenseCategory`, `Budget`
-
-**Navigation**:
-- ➡️ AddEditCategoryScreen (add new)
-- ➡️ AddEditCategoryScreen (edit existing)
-- ➡️ ExpenseHistoryScreen (filtered by category)
-
----
-
-#### 4.2 Add/Edit Category Screen
-**File**: `lib/screens/categories/add_edit_category_screen.dart`
-
-**Fungsi**:
-- Form untuk create/update kategori
-- Input nama kategori
-- Pilih tipe kategori (dropdown):
-  - SUBSCRIPTION
-  - DAILY_CONTINUOUS
-  - USAGE_BASED
-  - ONE_TIME
-- Pilih allocation method:
-  - PERCENTAGE (%, total 100% untuk semua kategori)
-  - FIXED_AMOUNT (Rp fixed setiap income)
-- Input allocation value
-- Input icon/color kategori (optional)
-- Input subscription due date (jika SUBSCRIPTION)
-- Input monthly target (jika USAGE_BASED)
-
-**Data Source**:
-- **Services**: 
-  - `CategoryService.createCategory()` - POST new category
-  - `CategoryService.updateCategory()` - PUT update category
-  - `CategoryService.getCategories()` - GET for validation
-- **Models**: `ExpenseCategory`
-
-**Validation**:
-- Nama tidak boleh kosong
-- Allocation value harus > 0
-- Total percentage allocation tidak boleh > 100%
-- Subscription type harus ada due date
-
-**Navigation**:
-- ⬅️ Back to CategoryManagementScreen
-- ✅ Success → Back + refresh list
-
----
-
-### 5. 💵 Budget Overview Screen
-**File**: `lib/screens/budget/budget_overview_screen.dart`
-
-**Fungsi**:
-- Overview budget semua kategori bulan ini
-- Per kategori tampilkan:
-  - Allocated amount (dari auto-allocation)
-  - Spent amount
-  - Remaining amount
-  - Progress bar (visual percentage)
-  - Warning jika > 80% terpakai
-- Total allocated budget
-- Total spent
-- Total remaining
-- History budget allocation (dari income mana saja)
-- Manual reallocate budget antar kategori
-- Monthly budget reset status
-
-**Data Source**:
-- **Services**: 
-  - `BudgetService.getBudgetSummary()` - GET summary
-  - `BudgetService.getAllocations()` - GET allocation history
-  - `BudgetService.reallocateBudget()` - POST manual reallocation
-  - `CategoryService.getCategories()` - GET categories
-- **Models**: `Budget`, `ExpenseCategory`
-
-**Features**:
-- Visual progress bars per kategori
-- Sort by: remaining, allocated, category name
-- Filter: show only low budget, show all
-- Reallocate: drag-drop atau form transfer budget
-
-**Navigation**:
-- ➡️ CategoryManagementScreen
-- ➡️ ExpenseHistoryScreen (per category)
-
----
-
-### 6. 📊 Analytics Screen
-**File**: `lib/screens/analytics/analytics_screen.dart`
-
-**Fungsi**:
-- Analisis mendalam pola keuangan
-- **Spending Pattern**: 
-  - Chart pengeluaran per kategori (pie/donut chart)
-  - Trend pengeluaran 6 bulan terakhir (line chart)
-  - Compare bulan ini vs bulan lalu
-- **Category Comparison**:
-  - Bar chart perbandingan kategori
-  - Top 5 kategori paling banyak pengeluaran
-  - Kategori dengan variance tertinggi
-- **Top Spending**:
-  - Top 10 expense terbesar
-  - Grouped by category
-- **Budget Performance**:
-  - Kategori over-budget
-  - Kategori under-budget
-  - Efisiensi budget (%) per kategori
-- Filter by date range (Month, Quarter, Year, Custom)
-
-**Data Source**:
-- **Services**: 
-  - `AnalyticsService.getSpendingPattern()` - GET spending pattern
-  - `AnalyticsService.getCategoryComparison()` - GET comparison
-  - `AnalyticsService.getTopSpending()` - GET top expenses
-  - `AnalyticsService.getBudgetPerformance()` - GET performance
-- **Providers**: `AnalyticsProvider` - State management
-- **Models**: `SpendingPattern`, `CategoryComparison`, `TopSpending`, `BudgetPerformance`
-
-**Charts**:
-- Pie chart (spending by category)
-- Line chart (trend over time)
-- Bar chart (category comparison)
-- Progress bars (budget performance)
-
-**Navigation**:
-- ➡️ ExpenseHistoryScreen (filtered by category/date)
-
----
-
-### 7. 📈 Reports Screen
-**File**: `lib/screens/reports/reports_screen.dart`
-
-**Fungsi**:
-- Generate comprehensive monthly/yearly reports
-- **Monthly Report**:
-  - Total income
-  - Total expense
-  - Net savings
-  - Expense by category
-  - Budget utilization
-  - Top expenses
-  - Comparison with previous month
-- **Yearly Report**:
-  - Total income per bulan
-  - Total expense per bulan
-  - Net savings per bulan
-  - Best/worst month
-  - Category trends
-- Export report (PDF, CSV)
-- Print report
-- Share report
-
-**Data Source**:
-- **Services**: 
-  - `ReportService.getMonthlyReport()` - GET monthly report
-  - `ReportService.getYearlyReport()` - GET yearly report
-  - `ReportService.exportReport()` - POST export request
-- **Providers**: `ReportProvider` - State management
-- **Models**: `MonthlyReport`, `YearlyReport`
-
-**Features**:
-- Date range selector
-- Report type selector (Monthly/Yearly)
-- Visual charts dan tables
-- Export buttons (PDF/CSV/Share)
-
-**Navigation**:
-- ➡️ ExpenseHistoryScreen (detail view)
-- ➡️ IncomeHistoryScreen (detail view)
-
----
-
-### 8. 📜 Transaction History Screen
-**File**: `lib/screens/transactions/transaction_history_screen.dart`
-
-**Fungsi**:
-- Combined view income + expense dalam satu timeline
-- Chronological order (terbaru di atas)
-- Differentiate income (green +) dan expense (red -)
-- Filter by:
-  - Date range
-  - Transaction type (All, Income only, Expense only)
-  - Category (untuk expense)
-- Search by description/notes
-- Running balance (optional toggle)
-- Group by date (Today, Yesterday, Last 7 days, dll)
-
-**Data Source**:
-- **Services**: 
-  - `IncomeService.getIncomes()` - GET incomes
-  - `ExpenseService.getExpenses()` - GET expenses
-  - Merge dan sort di frontend
-- **Models**: `Income`, `Expense`
-
-**Features**:
-- Infinite scroll atau pagination
-- Pull to refresh
-- Color coding (income vs expense)
-- Swipe actions (edit/delete)
-
-**Navigation**:
-- ➡️ AddIncomeScreen
-- ➡️ AddExpenseScreen
-- ➡️ Edit Income/Expense
-
----
-
-### 9. 🔔 Alert Screens
-
-#### 9.1 Alerts Screen
-**File**: `lib/screens/alerts/alerts_screen.dart`
-
-**Fungsi**:
-- List semua alerts/notifications
-- Alert types:
-  - Budget warning (>80% terpakai)
-  - Budget exceeded (>100%)
-  - Subscription due date reminder
-  - Monthly reset notification
-  - Zero balance warning
-- Mark as read/unread
-- Delete alert
-- Navigate to related screen dari alert
-
-**Data Source**:
-- **Services**: 
-  - `AlertService.getAlerts()` - GET alerts
-  - `AlertService.markAsRead()` - PUT mark read
-  - `AlertService.deleteAlert()` - DELETE alert
-- **Providers**: `AlertProvider` - State management
-- **Models**: `Alert`
-
-**Features**:
-- Badge count untuk unread alerts
-- Filter: All, Unread, Budget warnings, Reminders
-- Real-time updates (if implemented with websocket)
-
-**Navigation**:
-- ➡️ BudgetOverviewScreen (from budget alert)
-- ➡️ CategoryManagementScreen (from subscription alert)
-- ➡️ CreateAlertScreen
-
----
-
-#### 9.2 Create Alert Screen
-**File**: `lib/screens/alerts/create_alert_screen.dart`
-
-**Fungsi**:
-- Setup custom alerts/reminders
-- Alert types:
-  - Budget threshold (custom %)
-  - Subscription reminder (X days before due date)
-  - Saving goal reminder
-- Configure notification preferences
-
-**Data Source**:
-- **Services**: 
-  - `AlertService.createAlert()` - POST new alert rule
-  - `CategoryService.getCategories()` - For category selection
-- **Models**: `Alert`, `ExpenseCategory`
-
-**Navigation**:
-- ⬅️ Back to AlertsScreen
-- ✅ Success → Back + refresh
-
----
-
-## 🔄 DATA FLOW ARCHITECTURE
-
-### State Management Pattern
-
-```
-┌──────────────┐
-│   UI Screen  │
-└──────┬───────┘
-       │ User Action
-       ▼
-┌─────────────────┐
-│    Provider     │ ◄─── Notifies UI on data change
-│ (State Manager) │
-└────────┬────────┘
-         │ Calls
-         ▼
-┌──────────────┐
-│   Service    │ ◄─── Business logic
-│  (API Calls) │
-└──────┬───────┘
-       │ HTTP Request
-       ▼
-┌─────────────┐
-│  API Client │ ◄─── Serialization/Error handling
-└─────┬───────┘
-      │
-      ▼
-   Backend API
-```
-
-### Example Flow: Add Expense
-
-```
-1. User opens AddExpenseScreen
-   └─ Screen loads → Calls CategoryService.getCategories()
-   └─ Displays category list
-
-2. User fills form & clicks Save
-   └─ Screen validates input
-   └─ Calls ExpenseService.createExpense()
-      └─ Service sends POST /api/expenses to backend
-      └─ Backend processes:
-          - Creates expense record
-          - Updates budget (deducts from category budget)
-          - Triggers alert if budget > threshold
-      └─ Backend returns expense object + updated budget
-   └─ Service returns data to screen
-   └─ Screen shows success message
-   └─ Screen navigates back
-   └─ Previous screen refreshes data
-
-3. Backend side effects:
-   └─ Budget updated in DB
-   └─ Alert created if needed
-   └─ Analytics data updated
-```
-
-### Example Flow: Dashboard Load
-
-```
-1. DashboardScreen initState()
-   └─ Parallel API calls:
-      ├─ IncomeService.getIncomes() 
-      ├─ ExpenseService.getExpenses()
-      ├─ BudgetService.getBudgetSummary()
-      └─ CategoryService.getCategories()
-   
-2. Services return data
-   └─ Screen setState() with data
-   └─ UI rebuilds dengan data terbaru
-   
-3. User sees:
-   ├─ Total income this month
-   ├─ Total expense this month
-   ├─ Remaining budget
-   ├─ Budget breakdown per category
-   └─ Recent transactions
-```
-
----
-
-## 🎨 UI/UX Design Pattern
-
-### Navigation Pattern
-- **Bottom Navigation Bar** (Primary navigation):
-  - Dashboard
-  - Transactions
-  - Budget
-  - Analytics
-  - More (Settings/Alerts)
-
-- **Nested Navigation** (Secondary):
-  - Dari Dashboard → Income/Expense screens
-  - Dari Budget → Category management
-  - Dari Analytics → Detailed reports
-
-### Widget Hierarchy
-
-```
-MaterialApp / ShadApp
-└─ MultiProvider
-   ├─ AnalyticsProvider
-   ├─ ReportProvider
-   └─ AlertProvider
-   
-   └─ Scaffold
-      ├─ AppBar (with actions)
-      ├─ Body (Screen content)
-      │  ├─ Loading state (CircularProgressIndicator)
-      │  ├─ Error state (Error message + retry)
-      │  ├─ Empty state (Empty illustration + CTA)
-      │  └─ Success state (Actual content)
-      │
-      ├─ FloatingActionButton (Quick actions)
-      └─ BottomNavigationBar
-```
-
-### Reusable Widgets
-
-Di `lib/widgets/`:
-- **Common widgets**: 
-  - `LoadingIndicator`
-  - `ErrorView`
-  - `EmptyStateView`
-  - `CustomButton`
-  - `CustomTextField`
-  - `DatePicker`
-  - `AmountInput`
-
-- **Domain-specific widgets**:
-  - `BudgetCard` - Tampil budget per kategori
-  - `ExpenseItem` - List item untuk expense
-  - `IncomeItem` - List item untuk income
-  - `CategoryChip` - Chip kategori dengan warna
-  - `TransactionCard` - Combined income/expense card
-  - `ChartWidget` - Wrapper untuk charts
-  - `StatCard` - Dashboard stat cards
-
----
-
-## 🔌 API Integration
-
-### API Client Configuration
-**File**: `lib/services/api_client.dart`
-
-```dart
-class ApiClient {
-  static const String baseUrl = 'http://localhost:8080/api';
-  
-  // HTTP methods
-  Future<Response> get(String endpoint);
-  Future<Response> post(String endpoint, dynamic data);
-  Future<Response> put(String endpoint, dynamic data);
-  Future<Response> delete(String endpoint);
-  
-  // Error handling
-  // Token management (if auth implemented)
-  // Request interceptors
-  // Response interceptors
-}
-```
-
-### Service Layer Example
-
-```dart
-class ExpenseService {
-  final ApiClient _apiClient;
-  
-  Future<List<Expense>> getExpenses({
-    DateTime? startDate,
-    DateTime? endDate,
-    int? categoryId,
-  }) async {
-    final response = await _apiClient.get('/expenses', params: {...});
-    return (response.data as List)
-        .map((json) => Expense.fromJson(json))
-        .toList();
-  }
-  
-  Future<Expense> createExpense(Expense expense) async {
-    final response = await _apiClient.post('/expenses', expense.toJson());
-    return Expense.fromJson(response.data);
-  }
-}
-```
-
----
-
-## 📦 Dependencies
-
-**Key packages** (dari `pubspec.yaml`):
-- `flutter` - Framework
-- `provider` - State management
-- `shadcn_ui` - UI components
-- `http` / `dio` - HTTP client untuk API calls
-- `intl` - Formatting (currency, date)
-- `fl_chart` - Charts untuk analytics
-- Lainnya sesuai kebutuhan
-
----
-
-## 🚀 App Initialization Flow
-
-```
-main.dart
-└─ WidgetsFlutterBinding.ensureInitialized()
-└─ Set device orientation (portrait only)
-└─ Set system UI style
-└─ runApp(FinanceTrackingApp)
-   └─ MultiProvider setup
-      ├─ AnalyticsProvider
-      ├─ ReportProvider
-      └─ AlertProvider
-   └─ MaterialApp/ShadApp
-      ├─ Theme configuration
-      ├─ Initial route: DashboardScreen
-      └─ Route definitions
-```
-
----
-
-## ✅ Best Practices Implemented
-
-1. **Separation of Concerns**:
-   - UI (Screens) terpisah dari logic (Services)
-   - State management dengan Provider
-   - Reusable widgets
-
-2. **Error Handling**:
-   - Try-catch di service layer
-   - User-friendly error messages
-   - Retry mechanisms
-
-3. **Performance**:
-   - Lazy loading untuk list panjang
-   - Image caching (if implemented)
-   - Minimize rebuilds dengan Provider
-
-4. **Code Organization**:
-   - Feature-based folder structure
-   - Consistent naming conventions
-   - DRY principle
-
-5. **User Experience**:
-   - Loading states
-   - Empty states
-   - Error states
-   - Pull-to-refresh
-   - Optimistic UI updates
-
----
-
-Apakah dokumentasi arsitektur mobile ini sudah lengkap dan sesuai kebutuhan? Ada yang perlu ditambahkan atau diubah?
+## ✅ Prinsip Arsitektur
+
+| Prinsip | Implementasi |
+|---------|-------------|
+| **Single Source of Truth** | Account balance = akumulasi semua topup - spent - transfer out + transfer in |
+| **Transactional Integrity** | Semua mutasi saldo dalam satu DB transaction (ACID) |
+| **Separation of Concerns** | Handler → Service → Repository; tiap layer punya tanggungjawab tunggal |
+| **Audit Trail** | Setiap mutasi saldo tercatat: income, expense, transfer |
+| **Non-Destructive** | Tidak ada hard delete untuk akun dan histori transaksi |
+| **Automation** | Salary income → auto-allocate; scheduled fund → auto-execute; cron → auto-notify |
+| **Flexibility** | DAILY_CONTINUOUS budget otomatis menyesuaikan panjang bulan |
+| **Fail-Safe** | Hard constraint pada saldo akun; soft warning pada budget kategori |

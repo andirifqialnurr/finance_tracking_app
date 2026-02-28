@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/income_provider.dart';
+import '../../providers/account_provider.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_card.dart';
 import '../../utils/validators.dart';
 import '../../utils/formatters.dart';
 import '../../utils/app_toast.dart';
 
-class AddIncomeScreen extends StatefulWidget {
+class AddIncomeScreen extends ConsumerStatefulWidget {
   const AddIncomeScreen({super.key});
 
   @override
-  State<AddIncomeScreen> createState() => _AddIncomeScreenState();
+  ConsumerState<AddIncomeScreen> createState() => _AddIncomeScreenState();
 }
 
-class _AddIncomeScreenState extends State<AddIncomeScreen> {
+class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
   final _formKey = GlobalKey<FormState>();
   final _sourceController = TextEditingController();
   final _amountController = TextEditingController();
@@ -37,8 +38,7 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<IncomeProvider>();
-    final isSubmitting = provider.isSubmitting;
+    final isSubmitting = ref.watch(incomeNotifierProvider).isLoading;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Add Income')),
@@ -197,24 +197,32 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
     if (_formKey.currentState!.validate()) {
       final amount = double.tryParse(_amountController.text) ?? 0;
       final description = _descriptionController.text.trim();
+      final accountId =
+          ref.read(accountsProvider).valueOrNull?.firstOrNull?.id ?? '';
 
-      final success = await context.read<IncomeProvider>().createIncome(
-        source: _sourceController.text.trim(),
-        amount: amount,
-        date: _selectedDate,
-        description: description.isEmpty ? null : description,
-      );
+      try {
+        final result = await ref
+            .read(incomeNotifierProvider.notifier)
+            .createIncome(
+              amount: amount,
+              source: _sourceController.text.trim(),
+              accountId: accountId,
+              description: description.isEmpty ? null : description,
+              date: _selectedDate,
+            );
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (success) {
+        if (result.alreadyAllocatedWarning != null) {
+          AppToast.showInfo(context, result.alreadyAllocatedWarning!);
+        }
         AppToast.showSuccess(context, AppConstants.successIncomeSaved);
         Navigator.pop(context);
-      } else {
-        final error = context.read<IncomeProvider>().submitError;
+      } catch (e) {
+        if (!mounted) return;
         AppToast.showError(
           context,
-          error ?? 'Failed to save income. Please try again.',
+          e.toString().replaceFirst('Exception: ', ''),
         );
       }
     }

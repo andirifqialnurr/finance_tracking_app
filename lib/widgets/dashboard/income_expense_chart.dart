@@ -91,7 +91,7 @@ class IncomeExpenseChart extends StatelessWidget {
               dotData: const FlDotData(show: true),
               belowBarData: BarAreaData(
                 show: true,
-                color: AppColors.success.withOpacity(0.1),
+                color: AppColors.success.withValues(alpha: 0.1),
               ),
             ),
             // Expense Line
@@ -108,7 +108,7 @@ class IncomeExpenseChart extends StatelessWidget {
               dotData: const FlDotData(show: true),
               belowBarData: BarAreaData(
                 show: true,
-                color: AppColors.error.withOpacity(0.1),
+                color: AppColors.error.withValues(alpha: 0.1),
               ),
             ),
           ],

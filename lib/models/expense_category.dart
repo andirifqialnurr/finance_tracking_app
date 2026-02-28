@@ -1,145 +1,74 @@
-import '../core/constants/app_constants.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-/// Expense Category Model
-class ExpenseCategory {
-  final String id;
-  final String name;
-  final ExpenseCategoryType type;
-  final double monthlyBudget;
-  final int allocationPriority;
-  final bool isActive;
-  final Map<String, dynamic>? metadata;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+part 'expense_category.freezed.dart';
+part 'expense_category.g.dart';
 
-  ExpenseCategory({
-    required this.id,
-    required this.name,
-    required this.type,
-    required this.monthlyBudget,
-    required this.allocationPriority,
-    required this.isActive,
-    this.metadata,
-    required this.createdAt,
-    required this.updatedAt,
-  });
+// ─── Enums ────────────────────────────────────────────────────────────────────
 
-  // From JSON
-  factory ExpenseCategory.fromJson(Map<String, dynamic> json) {
-    return ExpenseCategory(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      type: ExpenseCategoryType.fromString(
-        json['type'] as String? ?? 'expense',
-      ),
-      monthlyBudget: (json['monthly_budget'] as num? ?? 0).toDouble(),
-      allocationPriority: json['allocation_priority'] as int? ?? 0,
-      isActive: json['is_active'] as bool? ?? true,
-      metadata: json['metadata'] as Map<String, dynamic>?,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : DateTime.now(),
-    );
-  }
-
-  // To JSON
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'type': type.value,
-      'monthly_budget': monthlyBudget,
-      'allocation_priority': allocationPriority,
-      'is_active': isActive,
-      'metadata': metadata,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-    };
-  }
-
-  // To JSON for API request
-  Map<String, dynamic> toJsonRequest() {
-    return {
-      'name': name,
-      'type': type.value,
-      'monthly_budget': monthlyBudget,
-      'allocation_priority': allocationPriority,
-      if (metadata != null) 'metadata': metadata,
-    };
-  }
-
-  // Copy with
-  ExpenseCategory copyWith({
-    String? id,
-    String? name,
-    ExpenseCategoryType? type,
-    double? monthlyBudget,
-    int? allocationPriority,
-    bool? isActive,
-    Map<String, dynamic>? metadata,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return ExpenseCategory(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      type: type ?? this.type,
-      monthlyBudget: monthlyBudget ?? this.monthlyBudget,
-      allocationPriority: allocationPriority ?? this.allocationPriority,
-      isActive: isActive ?? this.isActive,
-      metadata: metadata ?? this.metadata,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
-  String get typeLabel => type.label;
-
-  // Alias for UI convenience
-  int get priority => allocationPriority;
-
-  String get priorityLabel {
-    if (allocationPriority <= 2) return 'Important';
-    if (allocationPriority <= 4) return 'High';
-    if (allocationPriority <= 6) return 'Medium';
-    return 'Low';
-  }
-
-  @override
-  String toString() {
-    return 'ExpenseCategory(id: $id, name: $name, type: ${type.value}, monthlyBudget: $monthlyBudget)';
-  }
+enum CategoryType {
+  @JsonValue('SUBSCRIPTION')
+  subscription,
+  @JsonValue('DAILY_CONTINUOUS')
+  dailyContinuous,
+  @JsonValue('USAGE_BASED')
+  usageBased,
+  @JsonValue('ONE_TIME')
+  oneTime,
 }
 
-/// Expense Category Type Enum
-enum ExpenseCategoryType {
-  subscription(AppConstants.categoryTypeSubscription),
-  dailyContinuous(AppConstants.categoryTypeDailyContinuous),
-  usageBased(AppConstants.categoryTypeUsageBased),
-  oneTime(AppConstants.categoryTypeOneTime);
+// ─── ExpenseCategory ──────────────────────────────────────────────────────────
 
-  final String value;
-  const ExpenseCategoryType(this.value);
+@freezed
+class ExpenseCategory with _$ExpenseCategory {
+  const factory ExpenseCategory({
+    required String id,
+    required String name,
+    required CategoryType type,
 
-  static ExpenseCategoryType fromString(String value) {
-    switch (value.toUpperCase()) {
-      case 'SUBSCRIPTION':
-        return ExpenseCategoryType.subscription;
-      case 'DAILY_CONTINUOUS':
-        return ExpenseCategoryType.dailyContinuous;
-      case 'USAGE_BASED':
-        return ExpenseCategoryType.usageBased;
-      case 'ONE_TIME':
-        return ExpenseCategoryType.oneTime;
-      default:
-        return ExpenseCategoryType.oneTime; // safe fallback instead of throwing
-    }
-  }
+    /// Budget bulanan. Untuk DAILY_CONTINUOUS ini auto-computed = dailyAmount * days.
+    /// Default 0 agar dapat di-parse dari response /transactions yang tidak menyertakan field ini.
+    @JsonKey(name: 'monthly_budget') @Default(0.0) double monthlyBudget,
 
-  String get label {
-    return AppConstants.categoryTypeLabels[value] ?? value;
-  }
+    /// HANYA untuk DAILY_CONTINUOUS: nominal harian (misal Rp 40.000/hari)
+    @JsonKey(name: 'daily_amount') double? dailyAmount,
+
+    @JsonKey(name: 'allocation_priority') @Default(1) int allocationPriority,
+    @JsonKey(name: 'is_active') @Default(true) bool isActive,
+    Map<String, dynamic>? metadata,
+
+    /// Nullable agar kompatibel dengan embedded category di response /transactions
+    @JsonKey(name: 'created_at') DateTime? createdAt,
+    @JsonKey(name: 'updated_at') DateTime? updatedAt,
+  }) = _ExpenseCategory;
+
+  factory ExpenseCategory.fromJson(Map<String, dynamic> json) =>
+      _$ExpenseCategoryFromJson(json);
+}
+
+// ─── CategoryBudget ───────────────────────────────────────────────────────────
+
+@freezed
+class CategoryBudget with _$CategoryBudget {
+  const factory CategoryBudget({
+    required String id,
+    @JsonKey(name: 'category_id') required String categoryId,
+    required int month,
+    required int year,
+    @JsonKey(name: 'allocated_amount') @Default(0) double allocatedAmount,
+    @JsonKey(name: 'spent_amount') @Default(0) double spentAmount,
+    @JsonKey(name: 'remaining_amount') @Default(0) double remainingAmount,
+
+    /// Snapshot daily_amount saat alokasi (DAILY_CONTINUOUS)
+    @JsonKey(name: 'effective_daily_amount') double? effectiveDailyAmount,
+
+    /// Snapshot jumlah hari bulan saat alokasi (DAILY_CONTINUOUS)
+    @JsonKey(name: 'days_in_month') int? daysInMonth,
+
+    ExpenseCategory? category,
+    @JsonKey(name: 'created_at') required DateTime createdAt,
+    @JsonKey(name: 'updated_at') required DateTime updatedAt,
+  }) = _CategoryBudget;
+
+  factory CategoryBudget.fromJson(Map<String, dynamic> json) =>
+      _$CategoryBudgetFromJson(json);
 }

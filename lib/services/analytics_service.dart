@@ -12,34 +12,19 @@ class AnalyticsService {
   ///
   /// [month] - Month (1-12)
   /// [year] - Year
-  /// [categoryId] - Optional category ID to filter by specific category
-  /// [period] - Period in months (3, 6, or 12). Default: 6
-  Future<List<SpendingPattern>> getSpendingPattern({
+  Future<SpendingPattern> getSpendingPattern({
     required int month,
     required int year,
-    String? categoryId,
-    int period = 6,
   }) async {
     try {
-      final queryParams = {
-        'month': month.toString(),
-        'year': year.toString(),
-        'period': period.toString(),
-      };
-
-      if (categoryId != null && categoryId.isNotEmpty) {
-        queryParams['category_id'] = categoryId;
-      }
+      final queryParams = {'month': month.toString(), 'year': year.toString()};
 
       final response = await _apiClient.get(
         ApiEndpoints.getSpendingPattern,
         queryParams: queryParams,
       );
 
-      final List<dynamic> data = response['data'] as List<dynamic>;
-      return data
-          .map((json) => SpendingPattern.fromJson(json as Map<String, dynamic>))
-          .toList();
+      return SpendingPattern.fromJson(response['data'] as Map<String, dynamic>);
     } catch (e) {
       throw ApiException('Failed to get spending pattern: ${e.toString()}');
     }
@@ -72,20 +57,20 @@ class AnalyticsService {
     }
   }
 
-  /// Get top spending categories for a date range
+  /// Get top spending categories for a month
   ///
-  /// [startDate] - Start date (YYYY-MM-DD)
-  /// [endDate] - End date (YYYY-MM-DD)
+  /// [month] - Month (1-12)
+  /// [year] - Year
   /// [limit] - Number of top categories to return. Default: 5
-  Future<TopSpending> getTopSpending({
-    required DateTime startDate,
-    required DateTime endDate,
+  Future<List<TopSpendingCategory>> getTopSpending({
+    required int month,
+    required int year,
     int limit = 5,
   }) async {
     try {
       final queryParams = {
-        'start_date': startDate.toIso8601String().split('T')[0],
-        'end_date': endDate.toIso8601String().split('T')[0],
+        'month': month.toString(),
+        'year': year.toString(),
         'limit': limit.toString(),
       };
 
@@ -94,18 +79,28 @@ class AnalyticsService {
         queryParams: queryParams,
       );
 
-      return TopSpending.fromJson(response['data'] as Map<String, dynamic>);
+      final List<dynamic> data = response['data'] as List<dynamic>;
+      return data
+          .map(
+            (json) =>
+                TopSpendingCategory.fromJson(json as Map<String, dynamic>),
+          )
+          .toList();
     } catch (e) {
       throw ApiException('Failed to get top spending: ${e.toString()}');
     }
   }
 
-  /// Get budget performance for a specific year
+  /// Get budget performance for a specific month and year
   ///
-  /// [year] - Year to analyze
-  Future<BudgetPerformance> getBudgetPerformance({required int year}) async {
+  /// [month] - Month (1-12)
+  /// [year] - Year
+  Future<BudgetPerformance> getBudgetPerformance({
+    required int month,
+    required int year,
+  }) async {
     try {
-      final queryParams = {'year': year.toString()};
+      final queryParams = {'month': month.toString(), 'year': year.toString()};
 
       final response = await _apiClient.get(
         ApiEndpoints.getBudgetPerformance,

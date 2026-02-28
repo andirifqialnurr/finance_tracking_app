@@ -1,9 +1,10 @@
-﻿import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
 import '../../models/budget.dart';
+import '../../models/expense_category.dart';
 import '../../providers/budget_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/common/app_card.dart';
@@ -11,152 +12,177 @@ import '../../widgets/budget/budget_category_item.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
 
-class BudgetOverviewScreen extends StatefulWidget {
+class BudgetOverviewScreen extends ConsumerStatefulWidget {
   const BudgetOverviewScreen({super.key});
 
   @override
-  State<BudgetOverviewScreen> createState() => _BudgetOverviewScreenState();
+  ConsumerState<BudgetOverviewScreen> createState() =>
+      _BudgetOverviewScreenState();
 }
 
-class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
+class _BudgetOverviewScreenState extends ConsumerState<BudgetOverviewScreen> {
   String _selectedFilter = 'All Categories';
+  late int _month;
+  late int _year;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final now = DateTime.now();
-      context.read<BudgetProvider>().fetchAll(month: now.month, year: now.year);
-    });
+    final now = DateTime.now();
+    _month = now.month;
+    _year = now.year;
+  }
+
+  String _getCategoryTypeLabel(CategoryType? type) {
+    switch (type) {
+      case CategoryType.subscription:
+        return 'Subscription';
+      case CategoryType.dailyContinuous:
+        return 'Daily Continuous';
+      case CategoryType.usageBased:
+        return 'Usage Based';
+      case CategoryType.oneTime:
+        return 'One Time';
+      case null:
+        return 'Unknown';
+    }
   }
 
   List<BudgetWithCategory> _filteredBudgets(List<BudgetWithCategory> budgets) {
     if (_selectedFilter == 'All Categories') return budgets;
     return budgets
-        .where((b) => b.category.typeLabel == _selectedFilter)
+        .where(
+          (b) => _getCategoryTypeLabel(b.category?.type) == _selectedFilter,
+        )
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<BudgetProvider>(
-      builder: (context, provider, _) {
-        final filtered = _filteredBudgets(provider.budgets);
+    final budgetsAsync = ref.watch(budgetsProvider(month: _month, year: _year));
+    final summaryAsync = ref.watch(
+      budgetSummaryProvider(month: _month, year: _year),
+    );
+    final allBudgets = budgetsAsync.valueOrNull ?? [];
+    final filtered = _filteredBudgets(allBudgets);
+    final summary = summaryAsync.valueOrNull;
 
-        return Scaffold(
-          backgroundColor: AppColors.background,
-          appBar: AppBar(
-            title: const Text('Budget Overview'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.filter_list),
-                onPressed: () => _showFilterOptions(provider),
-              ),
-            ],
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Budget Overview'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _showFilterOptions,
           ),
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Fixed header — does not scroll
-              Padding(
-                padding: AppDimensions.screenPadding,
-                child: _buildSummaryHeader(provider),
-              ),
-              Padding(
-                padding: AppDimensions.screenPaddingHorizontal,
-                child: _buildMonthSelector(provider),
-              ),
-              const SizedBox(height: AppDimensions.spacing24),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Fixed header
+          Padding(
+            padding: AppDimensions.screenPadding,
+            child: _buildSummaryHeader(summary),
+          ),
+          Padding(
+            padding: AppDimensions.screenPaddingHorizontal,
+            child: _buildMonthSelector(),
+          ),
+          const SizedBox(height: AppDimensions.spacing24),
 
-              // Scrollable list
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: () => provider.refresh(),
-                  child: provider.isLoading && provider.budgets.isEmpty
-                      ? const LoadingIndicator(message: 'Loading budgets...')
-                      : CustomScrollView(
-                          slivers: [
-                            // Error state
-                            if (provider.error != null)
-                              SliverFillRemaining(
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        provider.error!,
-                                        style: AppTypography.bodyMedium
-                                            .copyWith(color: AppColors.error),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(
-                                        height: AppDimensions.spacing16,
-                                      ),
-                                      TextButton(
-                                        onPressed: provider.refresh,
-                                        child: const Text('Retry'),
-                                      ),
-                                    ],
+          // Scrollable list
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(budgetsProvider);
+                ref.invalidate(budgetSummaryProvider);
+              },
+              child: budgetsAsync.isLoading && allBudgets.isEmpty
+                  ? const LoadingIndicator(message: 'Loading budgets...')
+                  : CustomScrollView(
+                      slivers: [
+                        if (budgetsAsync.hasError)
+                          SliverFillRemaining(
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    budgetsAsync.error.toString(),
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.error,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                ),
-                              )
-                            else if (filtered.isEmpty)
-                              SliverFillRemaining(
-                                child: EmptyState(
-                                  icon: Icons.account_balance_wallet_outlined,
-                                  title: 'No Budget Data',
-                                  message: _selectedFilter == 'All Categories'
-                                      ? 'Start by adding income to allocate budgets'
-                                      : 'No budgets found for $_selectedFilter',
-                                  actionLabel:
-                                      _selectedFilter != 'All Categories'
-                                      ? 'Clear Filter'
-                                      : null,
-                                  onAction: _selectedFilter != 'All Categories'
-                                      ? () => setState(
-                                          () => _selectedFilter =
-                                              'All Categories',
-                                        )
-                                      : null,
-                                ),
-                              )
-                            else
-                              SliverPadding(
-                                padding: AppDimensions.screenPaddingHorizontal,
-                                sliver: SliverList(
-                                  delegate: SliverChildBuilderDelegate((
-                                    context,
-                                    index,
-                                  ) {
-                                    final budget = filtered[index];
-                                    return BudgetCategoryItem(
-                                      categoryName: budget.category.name,
-                                      categoryType: budget.category.typeLabel,
-                                      allocatedAmount: budget.allocatedAmount,
-                                      spentAmount: budget.spentAmount,
-                                      remainingAmount: budget.remainingAmount,
-                                      onTap: () => _showBudgetDetails(budget),
-                                    );
-                                  }, childCount: filtered.length),
-                                ),
+                                  const SizedBox(
+                                    height: AppDimensions.spacing16,
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        ref.invalidate(budgetsProvider),
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
                               ),
-
-                            const SliverToBoxAdapter(
-                              child: SizedBox(height: AppDimensions.spacing24),
                             ),
-                          ],
+                          )
+                        else if (filtered.isEmpty)
+                          SliverFillRemaining(
+                            child: EmptyState(
+                              icon: Icons.account_balance_wallet_outlined,
+                              title: 'No Budget Data',
+                              message: _selectedFilter == 'All Categories'
+                                  ? 'Start by adding income to allocate budgets'
+                                  : 'No budgets found for $_selectedFilter',
+                              actionLabel: _selectedFilter != 'All Categories'
+                                  ? 'Clear Filter'
+                                  : null,
+                              onAction: _selectedFilter != 'All Categories'
+                                  ? () => setState(
+                                      () => _selectedFilter = 'All Categories',
+                                    )
+                                  : null,
+                            ),
+                          )
+                        else
+                          SliverPadding(
+                            padding: AppDimensions.screenPaddingHorizontal,
+                            sliver: SliverList(
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                final budget = filtered[index];
+                                return BudgetCategoryItem(
+                                  categoryName:
+                                      budget.category?.name ??
+                                      budget.categoryId,
+                                  categoryType: _getCategoryTypeLabel(
+                                    budget.category?.type,
+                                  ),
+                                  allocatedAmount: budget.allocatedAmount,
+                                  spentAmount: budget.spentAmount,
+                                  remainingAmount: budget.remainingAmount,
+                                  onTap: () => _showBudgetDetails(budget),
+                                );
+                              }, childCount: filtered.length),
+                            ),
+                          ),
+                        const SliverToBoxAdapter(
+                          child: SizedBox(height: AppDimensions.spacing24),
                         ),
-                ),
-              ),
-            ],
+                      ],
+                    ),
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
-  Widget _buildSummaryHeader(BudgetProvider provider) {
-    final summary = provider.summary;
+  Widget _buildSummaryHeader(BudgetSummary? summary) {
     final totalAllocated = summary?.totalAllocated ?? 0.0;
     final totalSpent = summary?.totalSpent ?? 0.0;
     final totalRemaining = summary?.totalRemaining ?? 0.0;
@@ -225,7 +251,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     );
   }
 
-  Widget _buildMonthSelector(BudgetProvider provider) {
+  Widget _buildMonthSelector() {
     return AppCard(
       padding: AppDimensions.paddingMD,
       child: Row(
@@ -233,18 +259,21 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
-              int m = provider.month - 1;
-              int y = provider.year;
+              int m = _month - 1;
+              int y = _year;
               if (m < 1) {
                 m = 12;
                 y -= 1;
               }
-              provider.changeMonth(m, y);
+              setState(() {
+                _month = m;
+                _year = y;
+              });
             },
           ),
           Expanded(
             child: Text(
-              Formatters.formatMonthYear(provider.month, provider.year),
+              Formatters.formatMonthYear(_month, _year),
               style: AppTypography.titleMedium,
               textAlign: TextAlign.center,
             ),
@@ -252,13 +281,16 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_right),
             onPressed: () {
-              int m = provider.month + 1;
-              int y = provider.year;
+              int m = _month + 1;
+              int y = _year;
               if (m > 12) {
                 m = 1;
                 y += 1;
               }
-              provider.changeMonth(m, y);
+              setState(() {
+                _month = m;
+                _year = y;
+              });
             },
           ),
         ],
@@ -266,7 +298,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     );
   }
 
-  void _showFilterOptions(BudgetProvider provider) {
+  void _showFilterOptions() {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -274,7 +306,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           top: Radius.circular(AppDimensions.radiusXL),
         ),
       ),
-      builder: (context) => Container(
+      builder: (ctx) => Container(
         padding: AppDimensions.paddingLG,
         child: SafeArea(
           child: Column(
@@ -292,7 +324,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                     TextButton(
                       onPressed: () {
                         setState(() => _selectedFilter = 'All Categories');
-                        Navigator.pop(context);
+                        Navigator.pop(ctx);
                       },
                       child: const Text('Clear'),
                     ),
@@ -337,6 +369,11 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
   }
 
   void _showBudgetDetails(BudgetWithCategory budget) {
+    final isSafe = budget.alertStatus == 'safe';
+    final isCritical = budget.alertStatus == 'critical';
+    final categoryName = budget.category?.name ?? budget.categoryId;
+    final categoryType = _getCategoryTypeLabel(budget.category?.type);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -345,12 +382,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           top: Radius.circular(AppDimensions.radiusXL),
         ),
       ),
-      builder: (context) => DraggableScrollableSheet(
+      builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.65,
         minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => SingleChildScrollView(
+        builder: (ctx2, scrollController) => SingleChildScrollView(
           controller: scrollController,
           padding: AppDimensions.paddingLG,
           child: Column(
@@ -367,10 +404,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 ),
               ),
               const SizedBox(height: AppDimensions.spacing24),
-              Text(budget.category.name, style: AppTypography.headlineSmall),
+              Text(categoryName, style: AppTypography.headlineSmall),
               const SizedBox(height: AppDimensions.spacing4),
               Text(
-                budget.category.typeLabel,
+                categoryType,
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -391,7 +428,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
               _buildDetailRow(
                 'Remaining',
                 Formatters.formatCurrency(budget.remainingAmount),
-                budget.isSafe ? AppColors.success : AppColors.warning,
+                isSafe ? AppColors.success : AppColors.warning,
               ),
               const Divider(height: AppDimensions.spacing24),
               _buildDetailRow(
@@ -399,37 +436,32 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 '${budget.percentageUsed.toStringAsFixed(1)}%',
                 AppColors.getBudgetColor(budget.percentageUsed),
               ),
-              if (!budget.isSafe)
+              if (!isSafe)
                 Container(
                   margin: const EdgeInsets.only(top: AppDimensions.spacing16),
                   padding: AppDimensions.paddingMD,
                   decoration: BoxDecoration(
-                    color:
-                        (budget.isCritical
-                                ? AppColors.error
-                                : AppColors.warning)
-                            .withOpacity(0.1),
+                    color: (isCritical ? AppColors.error : AppColors.warning)
+                        .withValues(alpha: 0.1),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        budget.isCritical
+                        isCritical
                             ? Icons.error_outline
                             : Icons.warning_amber_outlined,
-                        color: budget.isCritical
-                            ? AppColors.error
-                            : AppColors.warning,
+                        color: isCritical ? AppColors.error : AppColors.warning,
                         size: 20,
                       ),
                       const SizedBox(width: AppDimensions.spacing8),
                       Expanded(
                         child: Text(
-                          budget.isCritical
+                          isCritical
                               ? 'Over budget! Spending exceeds allocation.'
                               : 'Warning: spending is above ${budget.alertThreshold}%.',
                           style: AppTypography.bodySmall.copyWith(
-                            color: budget.isCritical
+                            color: isCritical
                                 ? AppColors.error
                                 : AppColors.warning,
                           ),
@@ -459,10 +491,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
         Text(value, style: AppTypography.titleSmall.copyWith(color: color)),
       ],
     );
-  }
-
-  Future<void> _refreshData() async {
-    await context.read<BudgetProvider>().refresh();
   }
 }
 

@@ -17,7 +17,7 @@ class ExpenseService {
   /// - search: description partial match
   /// - page, limit: pagination
   /// - sort: date_asc, date_desc, amount_asc, amount_desc
-  Future<ExpensePaginatedResponse> getExpenses({
+  Future<List<Expense>> getExpenses({
     String? categoryId,
     int? month,
     int? year,
@@ -52,7 +52,10 @@ class ExpenseService {
         queryParams: queryParams,
       );
 
-      return ExpensePaginatedResponse.fromJson(response);
+      final List<dynamic> data = response['data'] ?? [];
+      return data
+          .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       throw Exception('Failed to fetch expenses: ${e.toString()}');
     }
@@ -70,7 +73,7 @@ class ExpenseService {
 
   /// Create new expense
   /// Returns expense + updated budget remaining + optional alert
-  Future<ExpenseCreateResponse> createExpense({
+  Future<ExpenseCreateResult> createExpense({
     required String categoryId,
     required double amount,
     required DateTime date,
@@ -87,7 +90,7 @@ class ExpenseService {
       }
 
       final response = await _apiClient.post('/expenses', body: body);
-      return ExpenseCreateResponse.fromJson(response['data']);
+      return ExpenseCreateResult.fromJson(response['data']);
     } catch (e) {
       throw Exception('Failed to create expense: ${e.toString()}');
     }

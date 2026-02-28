@@ -22,7 +22,7 @@ class TransactionService {
   /// - [page]       : pagination page (default 1)
   /// - [limit]      : items per page (default 20)
   /// - [sort]       : 'date_asc', 'date_desc', 'amount_asc', 'amount_desc'
-  Future<TransactionPaginatedResponse> getTransactions({
+  Future<List<Transaction>> getTransactions({
     int? month,
     int? year,
     String? startDate,
@@ -53,9 +53,10 @@ class TransactionService {
         queryParams: queryParams.isEmpty ? null : queryParams,
       );
 
-      return TransactionPaginatedResponse.fromJson(
-        response as Map<String, dynamic>,
-      );
+      final List<dynamic> data = response['data'] ?? [];
+      return data
+          .map((e) => Transaction.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       throw ApiException('Failed to get transactions: ${e.toString()}');
     }

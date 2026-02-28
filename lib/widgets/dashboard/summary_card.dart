@@ -49,7 +49,7 @@ class SummaryCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(AppDimensions.spacing8),
                   decoration: BoxDecoration(
-                    color: (iconColor ?? AppColors.primary).withOpacity(0.1),
+                    color: (iconColor ?? AppColors.primary).withValues(alpha: 0.1),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: Icon(
@@ -129,7 +129,7 @@ class SummaryCardGradient extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(AppDimensions.spacing8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: AppDimensions.borderRadiusMD,
                   ),
                   child: Icon(
@@ -151,7 +151,7 @@ class SummaryCardGradient extends StatelessWidget {
             Text(
               title,
               style: AppTypography.labelMedium.copyWith(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
             Text(

@@ -15,7 +15,7 @@ class IncomeService {
   /// - page, limit: pagination (default: page=1, limit=20)
   /// - sort: date_asc, date_desc, amount_asc, amount_desc
   /// - source: partial match filter
-  Future<IncomePaginatedResponse> getIncomes({
+  Future<List<Income>> getIncomes({
     int? month,
     int? year,
     int page = 1,
@@ -38,7 +38,10 @@ class IncomeService {
         queryParams: queryParams,
       );
 
-      return IncomePaginatedResponse.fromJson(response);
+      final List<dynamic> data = response['data'] ?? [];
+      return data
+          .map((e) => Income.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       throw Exception('Failed to fetch incomes: ${e.toString()}');
     }
@@ -56,10 +59,10 @@ class IncomeService {
 
   /// Get income detail with allocation breakdown
   /// Backend returns allocations embedded in the detail response
-  Future<IncomeWithAllocations> getIncomeWithAllocations(String id) async {
+  Future<Income> getIncomeWithAllocations(String id) async {
     try {
       final response = await _apiClient.get('/incomes/$id');
-      return IncomeWithAllocations.fromJson(response['data']);
+      return Income.fromJson(response['data']);
     } catch (e) {
       throw Exception(
         'Failed to fetch income with allocations: ${e.toString()}',
@@ -69,7 +72,7 @@ class IncomeService {
 
   /// Create new income
   /// Returns income + auto-allocation breakdown
-  Future<IncomeWithAllocations> createIncome({
+  Future<IncomeCreateResult> createIncome({
     required String source,
     required double amount,
     required DateTime date,
@@ -88,29 +91,11 @@ class IncomeService {
       final response = await _apiClient.post('/incomes', body: body);
       debugPrint('[IncomeService] createIncome response: $response');
 
-      // Backend may return { data: { income: {...}, allocations: [...] } }
-      // or { data: { id, source, amount, ..., allocations: [...] } } (income flat in data)
       final data = response['data'] as Map<String, dynamic>?;
       if (data == null) {
         throw Exception('Unexpected response: missing data field');
       }
-
-      // If data has an 'income' key, it's the nested shape
-      if (data.containsKey('income')) {
-        return IncomeWithAllocations.fromJson(data);
-      }
-
-      // Otherwise data IS the income object, allocations may be a sibling or inside data
-      final allocationsRaw =
-          data['allocations'] as List? ??
-          response['allocations'] as List? ??
-          [];
-      return IncomeWithAllocations(
-        income: Income.fromJson(data),
-        allocations: allocationsRaw
-            .map((e) => AllocationBreakdown.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+      return IncomeCreateResult.fromJson(data);
     } catch (e) {
       debugPrint('[IncomeService] createIncome error: $e');
       throw Exception('Failed to create income: ${e.toString()}');
@@ -119,7 +104,7 @@ class IncomeService {
 
   /// Update income — uses PATCH (not PUT)
   /// Server will re-calculate allocations if amount changes
-  Future<IncomeWithAllocations> updateIncome({
+  Future<Income> updateIncome({
     required String id,
     String? source,
     double? amount,
@@ -134,7 +119,7 @@ class IncomeService {
       if (description != null) body['description'] = description;
 
       final response = await _apiClient.patch('/incomes/$id', body: body);
-      return IncomeWithAllocations.fromJson(response['data']);
+      return Income.fromJson(response['data']);
     } catch (e) {
       throw Exception('Failed to update income: ${e.toString()}');
     }

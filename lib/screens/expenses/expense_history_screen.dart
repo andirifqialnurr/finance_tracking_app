@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_typography.dart';
@@ -11,27 +12,25 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
 import '../../utils/formatters.dart';
 
-class ExpenseHistoryScreen extends StatefulWidget {
+class ExpenseHistoryScreen extends ConsumerStatefulWidget {
   const ExpenseHistoryScreen({super.key});
 
   @override
-  State<ExpenseHistoryScreen> createState() => _ExpenseHistoryScreenState();
+  ConsumerState<ExpenseHistoryScreen> createState() =>
+      _ExpenseHistoryScreenState();
 }
 
-class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
+class _ExpenseHistoryScreenState extends ConsumerState<ExpenseHistoryScreen> {
   String? _selectedCategoryId;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ExpenseProvider>().fetchExpenses();
-      context.read<CategoryProvider>().fetchCategories();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final expensesAsync = ref.watch(expensesProvider());
+    final expenses = expensesAsync.valueOrNull ?? [];
+    final filteredExpenses = _selectedCategoryId != null
+        ? expenses.where((e) => e.categoryId == _selectedCategoryId).toList()
+        : expenses;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -47,19 +46,15 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           ),
         ],
       ),
-      body: Consumer<ExpenseProvider>(
-        builder: (context, provider, _) {
-          if (provider.isLoading) {
-            return const LoadingIndicator(message: 'Loading expenses...');
-          }
-
-          if (provider.error != null) {
-            return Center(
+      body: expensesAsync.isLoading
+          ? const LoadingIndicator(message: 'Loading expenses...')
+          : expensesAsync.hasError
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    provider.error!,
+                    expensesAsync.error.toString(),
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.error,
                     ),
@@ -67,101 +62,71 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                   ),
                   const SizedBox(height: AppDimensions.spacing16),
                   ElevatedButton(
-                    onPressed: provider.refresh,
+                    onPressed: () => ref.invalidate(expensesProvider),
                     child: const Text('Retry'),
                   ),
                 ],
               ),
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Fixed header — does not scroll
-              if (_selectedCategoryId != null)
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_selectedCategoryId != null)
+                  Padding(
+                    padding: AppDimensions.screenPadding,
+                    child: _buildFilterChip(),
+                  ),
                 Padding(
                   padding: AppDimensions.screenPadding,
-                  child: _buildFilterChip(context),
+                  child: _buildSummaryCard(expenses),
                 ),
-              Padding(
-                padding: AppDimensions.screenPadding,
-                child: _buildSummaryCard(provider),
-              ),
-              const SizedBox(height: AppDimensions.spacing16),
-              // Scrollable list
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: provider.refresh,
-                  child: provider.expenses.isEmpty
-                      ? EmptyState(
-                          icon: Icons.receipt_long_outlined,
-                          title: 'No Expenses Yet',
-                          message:
-                              'Start tracking your expenses to see them here',
-                          actionLabel: 'Add Expense',
-                          onAction: _navigateToAddExpense,
-                        )
-                      : CustomScrollView(
-                          slivers: [
-                            SliverPadding(
-                              padding: AppDimensions.screenPaddingHorizontal,
-                              sliver: SliverList(
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  final expense = provider.expenses[index];
-                                  final categoryName = _getCategoryName(
+                const SizedBox(height: AppDimensions.spacing16),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () async => ref.invalidate(expensesProvider),
+                    child: filteredExpenses.isEmpty
+                        ? EmptyState(
+                            icon: Icons.receipt_long_outlined,
+                            title: 'No Expenses Yet',
+                            message:
+                                'Start tracking your expenses to see them here',
+                            actionLabel: 'Add Expense',
+                            onAction: _navigateToAddExpense,
+                          )
+                        : CustomScrollView(
+                            slivers: [
+                              SliverPadding(
+                                padding: AppDimensions.screenPaddingHorizontal,
+                                sliver: SliverList(
+                                  delegate: SliverChildBuilderDelegate((
                                     context,
-                                    expense.categoryId,
-                                  );
-                                  return ExpenseListItem(
-                                    categoryName: categoryName,
-                                    amount: expense.amount,
-                                    date: expense.date,
-                                    description: expense.description,
-                                    onTap: () =>
-                                        _showExpenseDetails(context, expense),
-                                  );
-                                }, childCount: provider.expenses.length),
+                                    index,
+                                  ) {
+                                    final expense = filteredExpenses[index];
+                                    final categoryName = _getCategoryName(
+                                      expense.categoryId,
+                                    );
+                                    return ExpenseListItem(
+                                      categoryName: categoryName,
+                                      amount: expense.amount,
+                                      date: expense.date,
+                                      description: expense.description,
+                                      onTap: () => _showExpenseDetails(expense),
+                                    );
+                                  }, childCount: filteredExpenses.length),
+                                ),
                               ),
-                            ),
-                            if (provider.isLoadingMore)
                               const SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: EdgeInsets.all(
-                                    AppDimensions.spacing16,
-                                  ),
-                                  child: Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
+                                child: SizedBox(
+                                  height: AppDimensions.spacing80,
                                 ),
                               ),
-                            if (provider.hasNextPage && !provider.isLoadingMore)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: AppDimensions.spacing8,
-                                    horizontal: AppDimensions.spacing16,
-                                  ),
-                                  child: TextButton(
-                                    onPressed: provider.fetchNextPage,
-                                    child: const Text('Load more'),
-                                  ),
-                                ),
-                              ),
-                            const SliverToBoxAdapter(
-                              child: SizedBox(height: AppDimensions.spacing80),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
-      ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _navigateToAddExpense,
         backgroundColor: AppColors.primary,
@@ -171,38 +136,30 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     );
   }
 
-  String _getCategoryName(BuildContext context, String categoryId) {
-    final categories = context.read<CategoryProvider>().categories;
+  String _getCategoryName(String categoryId) {
+    final categories = ref.read(categoriesProvider).valueOrNull ?? [];
     final match = categories.where((c) => c.id == categoryId).firstOrNull;
     return match?.name ?? categoryId;
   }
 
-  Widget _buildFilterChip(BuildContext context) {
-    final categories = context.read<CategoryProvider>().categories;
+  Widget _buildFilterChip() {
+    final categories = ref.read(categoriesProvider).valueOrNull ?? [];
     final match = categories
         .where((c) => c.id == _selectedCategoryId)
         .firstOrNull;
     return Chip(
       label: Text(match?.name ?? _selectedCategoryId ?? ''),
-      onDeleted: () {
-        setState(() => _selectedCategoryId = null);
-        context.read<ExpenseProvider>().fetchExpenses();
-      },
+      onDeleted: () => setState(() => _selectedCategoryId = null),
       deleteIcon: const Icon(Icons.close, size: 18),
-      backgroundColor: AppColors.primary.withOpacity(0.1),
+      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
       labelStyle: AppTypography.labelMedium.copyWith(color: AppColors.primary),
     );
   }
 
-  Widget _buildSummaryCard(ExpenseProvider provider) {
-    final total =
-        provider.summary?.totalAmount ??
-        provider.expenses.fold<double>(0.0, (s, e) => s + e.amount);
+  Widget _buildSummaryCard(List<Expense> expenses) {
+    final total = expenses.fold<double>(0.0, (s, e) => s + e.amount);
     final now = DateTime.now();
-    final monthLabel = Formatters.formatMonthYear(
-      provider.month ?? now.month,
-      provider.year ?? now.year,
-    );
+    final monthLabel = Formatters.formatMonthYear(now.month, now.year);
 
     return Container(
       padding: AppDimensions.paddingMD,
@@ -223,7 +180,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           Text(
             'Total Expenses',
             style: AppTypography.labelMedium.copyWith(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
             ),
           ),
           const SizedBox(height: AppDimensions.spacing8),
@@ -235,7 +192,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
           Text(
             monthLabel,
             style: AppTypography.bodySmall.copyWith(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
             ),
           ),
         ],
@@ -244,7 +201,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   }
 
   void _showFilterSheet() {
-    final categories = context.read<CategoryProvider>().categories;
+    final categories = ref.read(categoriesProvider).valueOrNull ?? [];
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -268,7 +225,6 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                     : null,
                 onTap: () {
                   setState(() => _selectedCategoryId = null);
-                  context.read<ExpenseProvider>().fetchExpenses();
                   Navigator.pop(ctx);
                 },
               ),
@@ -280,9 +236,6 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                       : null,
                   onTap: () {
                     setState(() => _selectedCategoryId = cat.id);
-                    context.read<ExpenseProvider>().fetchExpenses(
-                      categoryId: cat.id,
-                    );
                     Navigator.pop(ctx);
                   },
                 ),
@@ -322,7 +275,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                   ),
                   onSubmitted: (_) {
                     Navigator.pop(ctx);
-                    context.read<ExpenseProvider>().fetchExpenses();
+                    ref.invalidate(expensesProvider);
                   },
                 ),
               ],
@@ -333,8 +286,8 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     );
   }
 
-  void _showExpenseDetails(BuildContext context, Expense expense) {
-    final categoryName = _getCategoryName(context, expense.categoryId);
+  void _showExpenseDetails(Expense expense) {
+    final categoryName = _getCategoryName(expense.categoryId);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -351,8 +304,8 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
               label: 'Date',
               value: Formatters.formatDate(expense.date),
             ),
-            if (expense.description != null && expense.description!.isNotEmpty)
-              _DetailRow(label: 'Description', value: expense.description!),
+            if (expense.description.isNotEmpty)
+              _DetailRow(label: 'Description', value: expense.description),
           ],
         ),
         actions: [
@@ -366,8 +319,8 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   }
 
   void _navigateToAddExpense() {
-    Navigator.pushNamed(context, '/expenses/add').then((_) {
-      if (mounted) context.read<ExpenseProvider>().refresh();
+    context.push('/expenses/add').then((_) {
+      if (mounted) ref.invalidate(expensesProvider);
     });
   }
 }
